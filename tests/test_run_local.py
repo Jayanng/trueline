@@ -9,7 +9,7 @@ from scripts.run_local import _decision_exit, _verdict_to_dict, _worst_severity
 from tests.fakes import FakeGateway, ORDER_ITEMS
 from trueline.config import TableRef
 from trueline.datahub_client import LineageResult
-from trueline.decision import Decision, TableDecision
+from trueline.decision import ContractEvaluation, Decision, TableDecision
 from trueline.diff_parser import ChangeKind, ChangedColumn
 from trueline.impact import TableVerdict
 
@@ -41,6 +41,38 @@ def test_verdict_serialization_includes_contract_decision():
 
     assert payload["decision"] == "ALLOW"
     assert payload["contract_evaluations"] == []
+
+
+def test_verdict_serialization_preserves_missing_deployment_evidence():
+    deployment = "urn:li:mlModelDeployment:missing-clinical-deployment"
+    verdict = TableVerdict(
+        ref=ORDER_ITEMS,
+        file_path="models/order_items.sql",
+        columns=(ChangedColumn("lactate_mmol_l", ChangeKind.DROP),),
+        severity="CRITICAL",
+        affected=(),
+        message="protected input evidence is incomplete",
+    )
+    reason = f"Missing deployment evidence: {deployment}"
+    evaluation = ContractEvaluation(
+        contract_id="sepsis-risk-v3-prod",
+        column="lactate_mmol_l",
+        change_kind=ChangeKind.DROP,
+        policy="NO_DROP_OR_TYPE_CHANGE",
+        outcome="UNVERIFIED",
+        model_urn="urn:li:mlModel:sepsis-risk-v3",
+        deployment_urn=deployment,
+        semantic="blood lactate in mmol/L",
+        reason=reason,
+    )
+    table_decision = TableDecision(Decision.QUARANTINE, (evaluation,), (reason,))
+
+    payload = _verdict_to_dict(verdict, table_decision)
+
+    assert payload["decision"] == "QUARANTINE"
+    serialized = payload["contract_evaluations"][0]
+    assert serialized["reason"] == reason
+    assert deployment in serialized["reason"]
 
 
 def _blocking_contract_run(tmp_path, monkeypatch, *, shadow=False):

@@ -76,14 +76,26 @@ def evaluate_table(
 
     for contract, critical_input, changed_column in matches:
         warning_codes = {warning.code for warning in catalog_warnings}
-        missing = [
-            urn for urn in (contract.model_urn, contract.deployment_urn)
-            if urn not in lineage_urns
-        ]
-        if missing or warning_codes.intersection({"NO_DOWNSTREAM", "NO_ML_LINEAGE"}):
+        missing_evidence = []
+        if contract.model_urn not in lineage_urns:
+            missing_evidence.append(f"missing model evidence: {contract.model_urn}")
+        if contract.deployment_urn not in lineage_urns:
+            missing_evidence.append(
+                f"missing deployment evidence: {contract.deployment_urn}"
+            )
+        catalog_evidence = sorted(
+            warning_codes.intersection({"NO_DOWNSTREAM", "NO_ML_LINEAGE"})
+        )
+        if missing_evidence or catalog_evidence:
             outcome = "UNVERIFIED"
             decision = Decision.QUARANTINE
-            reason = "Lineage is unverified for protected input"
+            details = missing_evidence + [
+                f"catalog warning evidence: {code}" for code in catalog_evidence
+            ]
+            reason = (
+                "Lineage evidence is incomplete for protected input: "
+                + "; ".join(details)
+            )
         elif critical_input.policy == "NO_DROP_OR_TYPE_CHANGE" and changed_column.kind in {
             ChangeKind.DROP,
             ChangeKind.TYPE_CHANGE,

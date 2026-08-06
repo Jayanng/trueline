@@ -155,4 +155,6 @@ def test_missing_deployment_evidence_quarantines(e2e_enabled, tmp_path):
     assert payload["decision"] == "QUARANTINE"
     evaluations = payload["tables"][0]["contract_evaluations"]
     assert evaluations[0]["deployment_urn"] == missing_deployment
-    assert "unverified" in evaluations[0]["reason"].lower()
+    assert "missing deployment evidence" in evaluations[0]["reason"].lower()
+    assert missing_deployment in evaluations[0]["reason"]
+    assert missing_deployment in json.dumps(payload)

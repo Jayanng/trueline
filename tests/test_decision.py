@@ -84,6 +84,8 @@ def test_protected_input_without_lineage_is_quarantined():
     )
     assert result.decision == Decision.QUARANTINE
     assert "lineage" in " ".join(result.reasons).lower()
+    assert "catalog warning" in result.evaluations[0].reason.lower()
+    assert "no_downstream" in result.evaluations[0].reason.lower()
 
 
 def test_missing_contracted_deployment_is_quarantined():
@@ -95,6 +97,22 @@ def test_missing_contracted_deployment_is_quarantined():
         (CONTRACT,),
     )
     assert result.decision == Decision.QUARANTINE
+    assert DEPLOYMENT in result.evaluations[0].reason
+    assert "missing deployment evidence" in result.evaluations[0].reason.lower()
+
+
+def test_missing_contracted_model_is_distinguished_from_missing_deployment():
+    result = evaluate_table(
+        DATASET,
+        (ChangedColumn("lactate_mmol_l", ChangeKind.DROP),),
+        LINEAGE[1:],
+        [],
+        (CONTRACT,),
+    )
+    assert result.decision == Decision.QUARANTINE
+    assert MODEL in result.evaluations[0].reason
+    assert "missing model evidence" in result.evaluations[0].reason.lower()
+    assert "missing deployment evidence" not in result.evaluations[0].reason.lower()
 
 
 def test_decision_precedence_is_explicit():
