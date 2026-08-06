@@ -9,6 +9,7 @@ description = "Gate pull requests on DataHub ML lineage; true the graph from the
 requires-python = ">=3.10"
 dependencies = [
     "acryl-datahub>=1.0.0",
+    "mcp-server-datahub>=0.5.0",
     "sqlglot>=25.0.0",
     "unidiff>=0.7.5",
     "anthropic>=0.40.0",

@@ -6,13 +6,13 @@
 
 **Architecture:** A deterministic Python engine (diff parsing, lineage walking, severity, write-back planning/commit) reads and writes a real DataHub Core instance via the Python SDK; an optional Anthropic agent writes prose only, never facts. A `run_local.py` CLI drives the whole pipeline against a git diff (primary demo path); a GitHub Action wraps the same code for self-hosted-runner PRs. `seed/seed_ml_tail.py` grafts the ML tail onto the official `showcase-ecommerce` datapack with real SDK calls (honestly labeled demo entities).
 
-**Tech Stack:** Python 3.11 (≥3.10) · `acryl-datahub` SDK · `sqlglot` · `unidiff` · `anthropic` (async) · `aiosqlite` · `pytest` · Docker Desktop + `datahub` CLI (dev infra only) · git.
+**Tech Stack:** Python 3.11 (≥3.10) · `acryl-datahub` SDK · `mcp-server-datahub` (read sidecar) · `sqlglot` · `unidiff` · `anthropic` (async) · `aiosqlite` · `pytest` · Docker + `datahub` CLI (dev infra) · git.
 
 ## Global Constraints
 
 - **Reality principle (hard rule, from `ARCHITECTURE.md` §4):** every verdict is computed live from the real graph; no hardcoded demo output, no canned comments, no invented metrics (null rates, P95, SLA numbers), no fake social proof. The ML tail is real metadata created via real SDK calls but is *demo data* — the README says so.
 - **Dry-run by default.** The pipeline writes nothing unless `--commit` is passed (post-merge only). Pre-merge runs propose; the PR is the approval gate.
-- **Engine reads/writes via the Python SDK** (`DataHubClient`). MCP tools are for the agent layer/skill story, not the engine. MCP cannot write lineage — all lineage writes are SDK calls.
+- **Engine reads via MCP server, writes via SDK.** The `DataHubGateway` connects to `mcp-server-datahub` (sidecar at `http://127.0.0.1:8000/mcp`) for search, entity details, and lineage reads. Lineage writes and term mutations still use the Python SDK (`DataHubClient`) because MCP mutation tools don't support aspect-level ML lineage writes. The MCP server must be started as a sidecar before running the pipeline.
 - **ML lineage is NOT `add_lineage`:** ML edges use aspect fields (`MLFeaturePropertiesClass(sources=[...])`, `MLModelPropertiesClass(mlFeatures=[...])` read-modify-write). `add_lineage`/`infer_lineage_from_sql` are for Dataset → Dataset only.
 - **Terms:** SDK pattern is get → mutate → update (`entity["col"].add_term(urn)` + `client.entities.update(entity)`). There is no `add_terms` SDK helper.
 - **Lineage writes use `SYNC_WAIT` emit mode** so before/after verification is honest.
@@ -63,6 +63,7 @@ description = "Gate pull requests on DataHub ML lineage; true the graph from the
 requires-python = ">=3.10"
 dependencies = [
     "acryl-datahub>=1.0.0",
+    "mcp-server-datahub>=0.5.0",
     "sqlglot>=25.0.0",
     "unidiff>=0.7.5",
     "anthropic>=0.40.0",
@@ -102,6 +103,7 @@ node_modules/
 ```dotenv
 DATAHUB_GMS_URL=http://localhost:8080
 DATAHUB_GMS_TOKEN=
+MCP_SERVER_URL=http://127.0.0.1:8000/mcp
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=claude-sonnet-4-5
 TRUELINE_DRY_RUN=true
@@ -385,6 +387,7 @@ def parse_dataset_urn(urn: str) -> TableRef:
 class Config:
     gms_url: str = field(default_factory=lambda: os.getenv("DATAHUB_GMS_URL", "http://localhost:8080"))
     gms_token: str = field(default_factory=lambda: os.getenv("DATAHUB_GMS_TOKEN", ""))
+    mcp_url: str = field(default_factory=lambda: os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp"))
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     anthropic_model: str = field(default_factory=lambda: os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5"))
     dry_run: bool = field(
@@ -638,7 +641,7 @@ git commit -m "feat: diff parser (unidiff + column change classification)"
 
 ---
 
-### Task 5: datahub_client.py — SDK gateway (reads + lineage writes)
+### Task 5: datahub_client.py — MCP gateway (reads via MCP server, writes via SDK)
 
 **Files:**
 - Create: `trueline/datahub_client.py`
@@ -659,6 +662,8 @@ git commit -m "feat: diff parser (unidiff + column change classification)"
     - `add_lineage(upstream: TableRef, downstream: TableRef, column_lineage: dict[str, list[str]] | None = None, wait: bool = False) -> None`
     - `add_term(ref: TableRef, column: str, term_urn: str) -> None`
   - `tests/fakes.py`: `FakeGateway` implementing the same contract in memory (records `add_lineage`/`add_term` calls; seeds fixtures).
+
+**Architecture note:** Read operations (`search`, `downstream`, `entity`, `owners`, `environment`, `column_terms`) go through the MCP server (`http://127.0.0.1:8000/mcp`) via JSON-RPC over HTTP. Write operations (`add_lineage`, `add_term`) use the Python SDK directly because MCP mutation tools are disabled by default and don't support aspect-level ML lineage writes. The factory method `DataHubGateway.create(cfg)` initializes both connections.
 
 - [ ] **Step 1: Write the contract test `tests/test_gateway_contract.py`** (both implementations must satisfy it)
 
@@ -799,7 +804,11 @@ python -m pytest tests/test_gateway_contract.py -v
 ```python
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
+from http.client import HTTPConnection
+from typing import Any
 
 from datahub.metadata.urns import DatasetUrn, GlossaryTermUrn
 from datahub.sdk import DataHubClient
@@ -817,76 +826,99 @@ class LineageResult:
     paths: tuple[tuple[str, ...], ...] = ()
 
 
-class DataHubGateway:
-    """Reads/writes the real DataHub graph via the Python SDK.
+def _mcp_call(mcp_url: str, method: str, params: dict[str, Any] | None = None) -> Any:
+    host, port, path = "127.0.0.1", 8000, "/mcp"
+    if mcp_url.startswith("http"):
+        rest = mcp_url.split("://", 1)[1]
+        host, _, rest = rest.partition(":")
+        port = int(rest.split("/")[0]) if rest else 8000
+    conn = HTTPConnection(host, port, timeout=10)
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}})
+    conn.request("POST", path, body=body,
+                 headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+    resp = conn.getresponse()
+    raw = resp.read().decode()
+    conn.close()
+    for line in raw.split("\n"):
+        if line.startswith("data: "):
+            return json.loads(line[6:])
+    raise RuntimeError(f"MCP call failed: {raw[:200]}")
 
-    The engine (deterministic layer) always uses this class — never the LLM.
-    MCP tools belong to the agent layer and the skill; the gateway is SDK-only.
+
+class DataHubGateway:
+    """Reads via MCP server, writes via SDK.
+
+    MCP server must be running at cfg.mcp_url (started as a sidecar).
+    The SDK client is used for writes only (add_lineage, add_term).
     """
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        self.mcp_url = getattr(cfg, "mcp_url", os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp"))
         self._client = DataHubClient(server=cfg.gms_url, token=cfg.gms_token)
 
-    def downstream(self, ref: TableRef, column: str | None = None, max_hops: int = 4) -> list[LineageResult]:
-        results = self._client.lineage.get_lineage(
-            source_urn=DatasetUrn.from_string(ref.urn),
-            source_column=column,
-            direction="downstream",
-            max_hops=max_hops,
-        )
-        out: list[LineageResult] = []
-        for r in results:
-            # SPIKE: verify the exact attribute names of the SDK LineageResult
-            # (urn/type/hops/platform/name/paths) and the shape of paths against
-            # the live instance before proceeding.
-            paths = tuple(tuple(str(x) for x in path) for path in (r.paths or []))
-            out.append(
-                LineageResult(
-                    urn=str(r.urn),
-                    entity_type=str(r.type),
-                    platform=str(r.platform),
-                    name=str(r.name),
-                    hops=int(r.hops or 0),
-                    paths=paths,
-                )
-            )
-        return out
+    def _mcp(self, tool: str, args: dict[str, Any] | None = None) -> Any:
+        result = _mcp_call(self.mcp_url, "tools/call", {"name": tool, "arguments": args or {}})
+        if "result" in result and result["result"]["content"]:
+            text = result["result"]["content"][0].get("text", "{}")
+            return json.loads(text) if isinstance(text, str) else text
+        return {}
+
+    def search(self, query: str, entity_type: str = "dataset", limit: int = 20) -> list[str]:
+        data = self._mcp("search", {"query": query})
+        entities = data.get("entities", [])
+        return [e["urn"] for e in entities if entity_type in e.get("type", "")][:limit]
 
     def entity(self, urn: str) -> dict:
-        return self._client.entities.get(urn)
+        data = self._mcp("get_entities", {"urns": [urn]})
+        if isinstance(data, list):
+            return data[0] if data else {"urn": urn}
+        return data.get("entities", [{}])[0] if "entities" in data else {"urn": urn}
 
     def owners(self, urn: str) -> list[str]:
         ent = self.entity(urn)
-        getter = getattr(ent, "get_owners", None)
-        if getter is None:
-            return []
-        # SPIKE: pin the return shape (dict[owner_urn, OwnerClass] vs list).
-        owners = getter()
-        if isinstance(owners, dict):
-            return sorted(str(k) for k in owners)
-        return [str(o) for o in (owners or [])]
+        owners_list = ent.get("owners", []) or []
+        return sorted(set(o.get("owner", "") for o in owners_list if o.get("owner")))
 
     def environment(self, urn: str) -> str:
         ent = self.entity(urn)
-        props = getattr(ent, "custom_properties", None) or {}
-        return str(props.get("environment", ""))  # SPIKE: pin how customProperties surfaces on the entity
+        props = ent.get("customProperties", {}) or {}
+        return str(props.get("environment", ""))
 
-    def search(self, query: str, entity_type: str = "dataset", limit: int = 20) -> list[str]:
-        # SPIKE: pin the SDK search call + result iteration (search vs entities.search).
-        results = self._client.entities.search(query=query, entity_type=entity_type, count=limit)
-        return [str(r.urn) for r in results]
+    def downstream(self, ref: TableRef, column: str | None = None, max_hops: int = 4) -> list[LineageResult]:
+        data = self._mcp("get_lineage", {
+            "urn": ref.urn,
+            "direction": "DOWNSTREAM",
+            "max_hops": max_hops,
+        })
+        entities = data.get("entities", []) if isinstance(data, dict) else data
+        out: list[LineageResult] = []
+        for e in entities:
+            urn = e.get("urn", "")
+            hops = e.get("hops", 1)
+            out.append(LineageResult(
+                urn=urn,
+                entity_type=e.get("type", "dataset"),
+                platform=e.get("platform", ""),
+                name=e.get("name", urn.split(":")[-1]),
+                hops=hops,
+                paths=tuple(tuple(p) for p in (e.get("paths", []) or [])),
+            ))
+        return out
 
     def column_terms(self, ref: TableRef, column: str) -> list[str]:
-        ent = self.entity(ref.urn)
-        col = ent.get(column)
-        if col is None:
+        try:
+            ent = self._client.entities.get(ref.urn)
+            col = ent.get(column)
+            if col is None:
+                return []
+            getter = getattr(col, "get_glossary_terms", None)
+            if getter is None:
+                return []
+            terms = getter()
+            return [str(t) for t in (terms or [])]
+        except Exception:
             return []
-        getter = getattr(col, "get_glossary_terms", None)
-        if getter is None:
-            return []
-        terms = getter()
-        return [str(t) for t in (terms or [])]  # SPIKE: pin per-column term access
 
     def add_lineage(self, upstream: TableRef, downstream: TableRef,
                     column_lineage: dict[str, list[str]] | None = None, wait: bool = False) -> None:
@@ -898,7 +930,7 @@ class DataHubGateway:
         )
 
     def add_term(self, ref: TableRef, column: str, term_urn: str) -> None:
-        ent = self.entity(ref.urn)
+        ent = self._client.entities.get(ref.urn)
         ent[column].add_term(GlossaryTermUrn.from_string(term_urn))
         self._client.entities.update(ent)
 ```
@@ -909,15 +941,15 @@ class DataHubGateway:
 python -m pytest tests/test_gateway_contract.py tests/test_config.py -v
 ```
 
-- [ ] **Step 6: SPIKE — verify the SDK calls against the live instance**
+- [ ] **Step 6: SPIKE — verify the MCP calls against the live instance**
 
-Write `seed/sdk_spike.py` (throwaway, run, then delete) exercising `downstream`, `owners`, `environment`, `column_terms`, `search` against the real quickstart (Task 2's `order_items` URN). Fix the SPIKE-marked lines to the real shapes. Run:
+Write `seed/mcp_spike.py` (throwaway, run, then delete) exercising `search`, `get_entities`, `get_lineage` against the real MCP server (must be running at `http://127.0.0.1:8000/mcp`). Verify the JSON response shapes match the `DataHubGateway` parsing. Run:
 
 ```powershell
-python seed/sdk_spike.py
+python seed/mcp_spike.py
 ```
 
-Expected: prints real lineage results from the datapack (e.g. dbt→snowflake hops for order_items). Delete `seed/sdk_spike.py` after pinning.
+Expected: prints real search results and lineage from the datapack. Delete `seed/mcp_spike.py` after pinning.
 
 - [ ] **Step 7: Commit**
 
@@ -2271,7 +2303,22 @@ git commit -m "feat: Anthropic agent layer (facts-only prose; keyless fallback)"
   - Default `--dry-run`; writes nothing unless `--commit`.
   - `--verify` (after `--commit`): re-runs `plan_writebacks` and prints `VERIFIED: N missing edges now present in the graph` or the remaining gaps.
 
-- [ ] **Step 1: Write `scripts/run_local.py`**
+- [ ] **Step 1: Start the MCP server sidecar**
+
+The MCP server must be running before any pipeline invocation. Start it in the background:
+
+```bash
+export DATAHUB_GMS_URL=http://localhost:8080
+export DATAHUB_GMS_TOKEN=$(grep -A1 'token:' ~/.datahubenv | tail -1 | tr -d ' ')
+python3 -m mcp_server_datahub --transport http &
+# Health check (MCP server listens on 127.0.0.1:8000)
+sleep 5
+curl -s http://127.0.0.1:8000/health
+```
+
+Expected: `{"status":"ok"}`. The MCP server provides `search`, `get_entities`, `get_lineage`, `list_schema_fields`, `get_dataset_queries` tools.
+
+- [ ] **Step 2: Write `scripts/run_local.py`**
 
 ```python
 #!/usr/bin/env python
@@ -2431,7 +2478,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 2: Write `tests/e2e/conftest.py`** (skips the suite unless a live instance is requested)
+- [ ] **Step 3: Write `tests/e2e/conftest.py`** (skips the suite unless a live instance is requested)
 
 ```python
 import os
@@ -2446,7 +2493,7 @@ def e2e_enabled():
     return True
 ```
 
-- [ ] **Step 3: Write `tests/e2e/test_demo_run.py`**
+- [ ] **Step 4: Write `tests/e2e/test_demo_run.py`**
 
 ```python
 import json
