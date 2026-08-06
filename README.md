@@ -10,6 +10,22 @@ Every PR leaves the catalog more true than it found it.
 Built for **Build with DataHub — The Agent Hackathon** · primary track
 **Production ML Agents**. Apache 2.0.
 
+## Website (5 pages)
+
+Marketing site in `web/` — no in-site video (YouTube external only):
+
+| Route | Content |
+|---|---|
+| `/` | Landing — thesis + live-shaped CRITICAL readout |
+| `/guard` | Engine pipeline, severity, red/green PR, CLI |
+| `/lineage` | ML path, seed, MCP/GMS/SDK reads & writes |
+| `/skill` | `datahub-pr-guard` OSS skill |
+| `/start` | Runbook (seed, env, commands) |
+
+```bash
+cd web && npm install && npm run dev
+```
+
 ## The three demo moments
 
 1. **The red PR** — dropping `return_date` turns a PR **CRITICAL**: it hits

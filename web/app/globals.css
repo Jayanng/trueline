@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #000000;
+  --accent: #82c200;
+  --frame: #404040;
+  --ink: #ffffff;
+  --muted: #a3a3a3;
+  --band: #262626;
+  --panel: #0a0a0a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+::selection {
+  background: var(--accent);
+  color: #000;
+}
+
+/* Hard edges everywhere */
+* {
+  border-radius: 0 !important;
+}

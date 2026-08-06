@@ -179,175 +179,134 @@ Do **not** use red/green GitHub status emojis as the primary signal; severity wo
 
 ---
 
-## 2. Landing page — structure & copy (narrative-first)
+## 2. Site map — exactly **5 pages** (matches the codebase)
 
-Single scroll page, 7 sections + nav + footer. Section flow below; every section header = h2 (32→48px, `font-medium`) + one-line mono description (`opacity-80`).
+No in-site video player. Demo video lives on **YouTube** (external link only).
 
-### 2.1 Sticky nav
-Logo (white SVG wordmark) · links: Problem · How it works · Impact · OSS Skill · FAQ · ghost button "Read the architecture" (→ `ARCHITECTURE.md` rendered) · lime button "Open a demo PR" (→ `/demo`).
+| # | Route | Name | Primary codebase sources |
+|---|---|---|---|
+| 1 | `/` | **Landing** | README thesis, demo moments, live verdict story |
+| 2 | `/guard` | **The guard** | `trueline/*`, `scripts/run_local.py`, `demo_repo/`, PR comment UX |
+| 3 | `/lineage` | **ML lineage** | `datahub_client.py`, `seed/*`, `props.yaml`, track path |
+| 4 | `/skill` | **OSS skill** | `skill/datahub-pr-guard/*` |
+| 5 | `/start` | **Run it** | README setup, `.env.example`, seed/verify, CLI flags, Action |
 
-### 2.2 Hero — "The silent failure dies in review."
-- **Badge:** `BUILT WITH DATAHUB · PRODUCTION ML AGENTS TRACK` (framed cell pair).
-- **Display title (typewriter):** "Catch silent ML breakage" — typewriter cycles the tail: `before merge.` → `before training.` → `before it costs money.`
-- **Tagline (mono, `opacity-80`):** "Trueline reads DataHub's end-to-end ML lineage at pull-request time — training data → features → models → deployments — and turns a green PR red before a dropped column silently degrades a model in production."
-- **CTAs:** `Start the demo` (lime, → `/demo`) · `How it works` (ghost, ↓ §2.4).
-- **Below (h-[20svh] mobile / full-height desktop):** live lineage-flow widget — nodes `order_items → feature_order_risk → fraud_model_v4 → fraud-scoring → fraud-scoring-endpoint`, one edge blinking **lime** (hot path).
+Shared chrome on every page: sticky nav · framed panels · footer.  
+**Not pages:** `/gates`, `/proposals`, `/settings`, `/demo` video — those are CLI / GitHub / DataHub / YouTube.
 
-### 2.3 Problem — "The incident that never fired."
-- **Header:** "The incident that never fired." / *"Production ML fails silently. The model doesn't crash — it degrades."*
-- **Readout panel (the money visual)** — fields are real engine output (column, entity type, prod flag, owner from the graph, verdict). No invented telemetry. Panel chrome matches **§1.7** (black panel, lime CRITICAL chip):
-```
-$ trueline --diff pr/2847 --gate
+### Nav (all pages)
 
-  order_items.return_date        DROP        author: @maya
-  column_suspects: return_date
-  └─ feature_order_risk          MLFEATURE
-  └─ fraud_model_v4              MLMODEL     [PROD] owner: @datahub
-  └─ fraud-scoring               MLMODELGROUP
-  └─ fraud-scoring-endpoint      MLMODELDEPLOYMENT
-
-  VERDICT: CRITICAL — dropping return_date reaches fraud_model_v4 [PROD] via ML lineage
-```
-- **Copy row (3 feature cells):**
-  - *"The column disappears."* — a rename or drop slips into a model's training input. No crash, no alert.
-  - *"The feature nulls."* — the derived feature degrades silently, poisoning every downstream prediction.
-  - *"The money leaks."* — degraded models cost teams weeks to trace and real revenue to fix.
-
-### 2.4 How it works — "Review the change. Guard the model. True the graph."
-- **Wide framed panel** with 3 cells separated by `divide-x`:
-  1. **THE RED PR** — "Every pull request that touches data runs the Trueline guard. Changed columns are traced downstream through DataHub lineage to every ML feature, model, and deployment they feed — with owners named on the verdict."
-  2. **THE GRAPH GETS TRUER** — "The diff reveals the lineage the catalog was missing. On merge, Trueline infers column-level lineage from the PR's own SQL and writes it back with provenance — DataHub got smarter because of the PR."
-  3. **GOVERNANCE DRIFT CAUGHT** — "When a column feeding production loses its PII term — or a term never propagated downstream — Trueline detects the drift and proposes the fix with the lineage path shown."
-- **Design note strip (mono caption):** "Code for facts, LLM for prose — blast radius and severity are computed deterministically from DataHub; the model only phrases the comment."
-
-### 2.5 Impact — stat band (black, `divide-y` rows)
-| Stat | Caption |
-|---|---|
-| `1` | merge gate — every data PR, dry-run before, write-back after |
-| `4` | severity tiers — CRITICAL · HIGH · MEDIUM · LOW |
-| `2` | layers per PR — guard the model, true the graph |
-| `0` | invented lineage — facts from the engine, never the model |
-
-### 2.6 OSS skill — white card island
-- **Header:** "One contribution. Open source." / *"Agents for ML teams shouldn't start from zero."*
-- **White framed card:** "Trueline ships `datahub-pr-guard` — a new skill for `datahub-project/datahub-skills` that turns any agent into a non-interactive PR gate with an ML-aware severity model. It composes `datahub-lineage` + `datahub-enrich`; it rebuilds nothing."
-- **Buttons:** `View the skill` (black-on-white) · `datahub-skills repo` (ghost, external link).
-
-### 2.7 FAQ — `#262626` band, accordion (right column)
-1. **"Does Trueline need Docker?"** — No, the product is Docker-free. Our demo runs against a local DataHub quickstart (`datahub docker quickstart` — Docker is dev infrastructure only) or DataHub Cloud via the MCP server and Python SDK.
-2. **"What does it use from DataHub?"** — The end-to-end ML lineage path (datasets → features → models → deployments), read through the **MCP server + GMS**, written through the Python SDK.
-3. **"Is the LLM making lineage decisions?"** — No. A deterministic engine computes blast radius and severity from the graph; the optional LLM only writes plain-English summary prose.
-4. **"When does write-back happen?"** — After the PR merges. The PR is the approval gate; pre-merge runs are dry-run — they propose, never mutate.
-5. **"What's the open-source story?"** — A new skill, `datahub-pr-guard`, PR'd to `datahub-project/datahub-skills` — composing the shipped lineage/enrich skills with PR orchestration and an ML severity model.
-
-### 2.8 CTA band — lime + photo
-- **Headline:** "Open a PR. Break nothing. / Catalog stays true."
-- **Buttons:** `Start the demo` (black-on-lime) · `Join the DataHub Slack` (white).
-
-### 2.9 Footer
-- Logo + socials (X · GitHub · LinkedIn · YouTube, muted → white hover).
-- 4 mono columns: **Product** (Problem, How it works, Impact, FAQ) · **Developers** (Architecture, `datahub-pr-guard` skill, API reference) · **Resources** (Demo, DataHub docs, MCP server, Python SDK) · **Community** (DataHub Slack, Devpost, datahub-skills repo).
-- "Stay in the loop" newsletter (`text-2xl lg:text-[36px]`) + mono input + lime subscribe.
-- Legal bar: mono `text-xs`, underlined links, `#A3A3A3` dot separators.
+`TRUELINE` wordmark · **Guard** · **Lineage** · **Skill** · **Start** · ghost `GitHub` · lime `Run the guard` (→ `/start`).
 
 ---
 
-## 3. Secondary pages (inherit the design system)
+## 3. Page specs (content must reflect real modules)
 
-All secondary pages share: sticky nav (same), `container` width, framed panels, mono uppercase micro-labels, same buttons/badges. They are **templates**, not bespoke designs.
+### 3.1 `/` — Landing
 
-### 3.1 `/demo` — demo page
-- Hero mini: h1 `48px` + tagline.
-- **Video slot:** framed black panel (16:9), embed of the ≤3-min demo video.
-- **Setup:** numbered mono steps in framed rows — 1) `datahub docker quickstart` 2) `datahub datapack load showcase-ecommerce` 3) seed ML tail 4) open demo PR 5) watch the verdict land.
-- **Before/after:** two framed panels side by side (`divide-x`) — lineage gap before, filled + provenance after.
+**Job:** Sell the Production ML Agents story in one scroll; push people to Guard / Lineage / Start.
 
-### 3.2 `/architecture` — architecture & docs page
-- Left sticky mono TOC (`text-sm`, `#404040` separators), right content panels: system diagram (framed), component table, API quick reference code blocks (mono, lime `$` prompts), risk table.
-- Rendered from `ARCHITECTURE.md` content; same section-header rhythm.
+| Section | Content (from product) |
+|---|---|
+| Hero | Thesis: silent ML breakage dies in review. Badge: `PRODUCTION ML AGENTS`. CTAs → `/guard`, `/start`. Optional external: `Watch on YouTube` (link only). |
+| Problem | Three beats: column disappears / feature nulls / money leaks. |
+| Readout panel | Real CLI-shaped output (§1.7 chrome): DROP `return_date` → feature → model → group → **deployment**, owner `@datahub`, CRITICAL. |
+| Three moments | Red PR · graph gets truer · reviewed stamp — not a video. |
+| Path strip | `order_items → feature_order_risk → feature → fraud_model_v4 → group + endpoint` |
+| CTA | Lime → `/start` · ghost → `/skill` |
 
-### 3.3 `/skill` — `datahub-pr-guard` OSS skill page
-- Badge: `OSS CONTRIBUTION · DATAHUB-SKILLS`.
-- **SKILL.md panel:** framed "file" showing frontmatter (name, description, user-invocable, min-cli-version) in mono with lime keys.
-- **Severity model table:** framed table — `CRITICAL` = non-additive change with ML downstream (incl. deployment) · `HIGH` = dashboards · `MEDIUM` = multi-consumer / non-additive no ML · `LOW` = additive only (even if ML consumers exist).
-- **Install commands:** mono code block (`npx skills add datahub-project/datahub-skills`).
-- **"Not This Skill"** boundary table (vs `datahub-lineage`, `datahub-enrich`).
+### 3.2 `/guard` — The guard (engine + PR surface)
 
-### 3.4 `/docs/*` — reference pages
-Generic template: breadcrumb mono caption, h2 + description header, framed content panels, right rail optional TOC. No new components.
+**Job:** Explain everything that runs on a PR. Map 1:1 to Python modules.
 
-### 3.5 404 — terminal style
+| Block | Maps to |
+|---|---|
+| Pipeline steps | `diff_parser` → `datahub_client.downstream` → `ml_impact` / `impact` → `comment` → `writeback` + `state` |
+| Severity table | CRITICAL (DROP/TYPE + ML) · HIGH (dashboards) · MEDIUM · LOW (additive / green PR) |
+| Red vs green | `demo/pr-2847` CRITICAL · `demo/pr-safe-add` LOW |
+| PR comment features | Mermaid blast radius · what-if · notify · column_suspects · `why[]` trail · shadow mode |
+| CLI | `scripts/run_local.py` flags: `--commit --verify --shadow --json --notify-out` |
+| Agent | Optional GMI DeepSeek **prose only** (`agent.py`) |
+| Journal | SQLite proposals PROPOSED / COMMITTED / SKIPPED (`state.py`) |
+
+### 3.3 `/lineage` — ML lineage (DataHub path)
+
+**Job:** Show the track path and how we read/write the catalog — not a live graph UI.
+
+| Block | Maps to |
+|---|---|
+| Full path diagram | dataset → MLFeature → MLModel → Group + **Deployment** |
+| Read path | MCP (`get_lineage`, `search`, `get_entities`) + GMS `entitiesV2` aspects |
+| Write path | SDK `add_lineage`, terms, `stamp_reviewed` / `props.yaml` |
+| Seed honesty | `seed/seed_ml_tail.py` demo entities; pack has zero ML |
+| Verify | `seed/verify_graph.py` ground truth |
+| Env / owners | From graph + URN, never invented |
+
+### 3.4 `/skill` — OSS skill
+
+**Job:** Present `datahub-pr-guard` as the contribution.
+
+| Block | Maps to |
+|---|---|
+| Frontmatter / triggers | `skill/datahub-pr-guard/SKILL.md` |
+| Severity model | `references/severity-model.md` |
+| Template | `templates/pr-verdict.template.md` |
+| Boundaries | vs `datahub-lineage` / `datahub-enrich` |
+| Anatomy tests | `skill/.../tests/test_skill_anatomy.py` |
+| CTA | Link to skill folder + future PR on `datahub-project/datahub-skills` |
+
+### 3.5 `/start` — Run it (no video embed)
+
+**Job:** Reproduce the live demo from the repo. YouTube is an **external** text link only.
+
+| Block | Maps to |
+|---|---|
+| Prerequisites | DataHub quickstart, token, MCP on `:8000` |
+| Seed | `python seed/seed_ml_tail.py` · `python seed/verify_graph.py` |
+| Env | `.env.example` — GMS, MCP, optional `GMI_*` |
+| Red command | `run_local.py --head demo/pr-2847` |
+| Green command | `--head demo/pr-safe-add` |
+| Shadow | `--shadow` |
+| Table map | `demo_repo/table_map.json` |
+| CI | `.github/workflows/trueline.yml` (self-hosted) |
+| Tests | `pytest tests -k "not e2e"` |
+| YouTube | Single ghost link: “Watch the ≤3 min demo on YouTube” → external URL placeholder |
+
+### 3.6 404 (not counted in the 5)
+
 ```
 $ trueline --route /unknown
 exit code 404 — no such route. catalog stays true.
 ```
-+ lime `Back home` button.
 
 ---
 
-## 4. Product pages — the Trueline app
+## 4. Explicit non-pages (live elsewhere)
 
-All product pages inherit the design system (§1) and share an **app shell**: top bar with logo + app nav (`Gates · Lineage · Proposals · Settings`), a status strip (mono caption: connected tenant URL + dry-run indicator), and the standard framed-panel composition. No landing-page marketing sections here — this is the instrument panel.
-
-> **State backing:** `/gates` and `/proposals` are driven by the local SQLite (aiosqlite) store — the idempotency/dry-run journal (see `ARCHITECTURE.md` §4). `/lineage` reads live from the DataHub graph (local GMS or Cloud).
-
-### 4.1 `/gates` — Guard console (app home)
-- **Header:** "Guard console" h2 + mono caption "Every data PR, gated on ML lineage."
-- **Framed table** (`border frame`, header row `uppercase font-mono text-[10px] tracking-wider text-muted`, body rows `divide-y`):
-  - PR # (mono link) · changed columns (mono, comma list) · severity chip · verdict chip · owner mentions · timestamp
-- **Severity chips (palette-pure, §1.1b):** `CRITICAL` = lime fill, black mono text · `HIGH` = white border, white text · `MEDIUM` = muted text, frame border · `LOW` = muted text only. **No red** — lime on black is the alert language of the whole product.
-- **Verdict chips:** `BLOCK` (lime fill / black text) · `WARN` (white border) · `PASS` (muted).
-- **Row expand / PR modal:** opens the **§1.7 PR verdict modal** (or inline expand with the same tokens) — blast radius Mermaid, what-if, notify, terminal readout.
-
-### 4.2 `/gates/:pr` — Verdict detail (same tokens as PR modal)
-- **Top banner:** severity chip + verdict chip + "PR #2847 · repo/demo-repo" mono caption; CRITICAL → lime 1px banner underline.
-- **The readout panel** (wow moment, reused from §2.3 / §1.7): `$ trueline --gate` terminal block — changed columns, `column_suspects`, path to feature → model → group → **deployment**, owner `@datahub`, `VERDICT: CRITICAL` in lime uppercase micro-label. **No invented metrics** (no null-rate / latency numbers).
-- **Affected entities list:** framed rows per ML entity — URN (mono), type (`MLMODEL` / `MLFEATURE` / `MLMODELDEPLOYMENT`), owner link, one-line reason.
-- **Proposed write-backs:** framed list — type (`COLUMN LINEAGE` / `GLOSSARY TERM` / `STRUCTURED PROPERTY`), target entity, source "inferred from PR SQL", state chip **PROPOSED** (lime border) → **COMMITTED** (lime fill) after merge.
-- **Governance note (mono caption):** "Write-back commits only after the PR merges. This run was dry-run: nothing was written."
-
-### 4.3 `/lineage` — ML lineage explorer
-- **Header:** "ML lineage" h2 + mono caption "Training data → features → models → deployments."
-- **Flow diagram widget:** framed black panel; nodes as bordered cells (`order_items`, `feature_order_risk`, `fraud_model_v4`, `fraud-scoring`, `fraud-scoring-endpoint`), **lime** edges, animated pulse; changed/dropped node or edge gets a **lime** blink (hot path = §1.1b `--hot-node-*`).
-- **Node click → side entity panel** (right column, `divide-x`): schema fields (mono list), owners, glossary terms, tags, description; "reviewed by Trueline · PR #2847" provenance line when stamped.
-- **Before/after view (real graph state, not animation):** `before | after` segmented control renders **live queries** of the graph — before = the gap edge absent, after = edge present with Trueline provenance. The toggle flips real data, never a fake. (Reality principle, `ARCHITECTURE.md` §4.)
-- **Empty state:** centered mono line "No lineage matches this search. Catalog stays true." + lime reset button.
-
-### 4.4 `/proposals` — Write-back journal
-- **Header:** "Write-back journal" h2 + mono caption "Every mutation Trueline made — or wants to make."
-- **Framed list rows** (`divide-y`): mutation type chip · target entity URN (mono) · source PR + commit · provenance note · state chip (`PROPOSED` lime-border / `COMMITTED` lime-fill / `REJECTED` muted).
-- **Filters:** segmented mono controls — `ALL · LINEAGE · TERMS · PROPERTY` (lime active).
-- **Idempotency proof:** re-running a PR shows `SKIPPED (already applied)` state — visible evidence of the SQLite journal.
-- **Empty state:** "No pending proposals. Every write is accounted for."
-
-### 4.5 `/settings` — Connection
-- **Header:** "Connection" h2 + mono caption "Point Trueline at your DataHub tenant."
-- **Mono form fields** (bordered inputs, `h-10 font-mono text-xs`, focus ring lime):
-  - GMS URL (`http://localhost:8080` or `https://<tenant>.acryl.io/gms`) · GMS token (masked, `••••••`) · Default View (optional) · Dry-run toggle (segmented `ON | OFF`, default ON)
-- **Status row:** `CONNECTED` lime chip + latency + "service account: trueline-ci" mono caption.
-- **Test button:** `Test connection` (lime) → runs `DataHubClient(...).search("*")` smoke call; result line in mono (`200 OK · 1,065 entities`).
-- **Danger zone (framed, `divide-y`):** `Reset local journal` (clears SQLite store) · `Re-seed demo graph` (runs `seed_ml_tail.py`) — both ghost-bordered buttons with lime hover.
+| Concept | Where it lives instead of a web page |
+|---|---|
+| Guard execution | `scripts/run_local.py` + GitHub Action |
+| Live lineage browse | DataHub UI (`:9002`) |
+| Write-back journal UI | SQLite via engine; list on `/guard` as docs |
+| Settings UI | `.env` / `trueline/config.py` |
+| Demo video | **YouTube only** |
 
 ---
 
 ## 5. Implementation notes
 
-- **Stack:** Next.js (App Router) + Tailwind CSS, mirroring GMI's build (React/Tailwind). Custom theme tokens via CSS variables (`--canvas`, `--accent`, `--frame`, `--ink`, `--muted`, `--band`, `--card`).
-- **Fonts:** self-hosted `GeistMono.woff2` + `alpha-lyrae-medium.woff2` (preload, `font-display: swap`).
-- **Sections:** `<section class="md:py-26 w-full px-6 py-12 sm:px-10 md:px-16">` + `container` — the standard wrapper for every section.
-- **Section header component:** `flex flex-col gap-6` h2 + mono one-liner — reused everywhere (no drift).
-- **Widgets:** typewriter hero (React, cycles array + CSS blink), marquee (CSS `w-max` animation), lineage-flow diagram (SVG edges + CSS transitions).
-- **No image assets required** except CTA-band photo and the DataHub/NVIDIA-style badge marks; all icons inline SVG.
-- **Content source of truth:** this file for copy/structure; `ARCHITECTURE.md` for facts (APIs, severities, demo moments). Keep the verdict readout (§2.3) consistent with the demo's real output.
+- **Stack:** Next.js (App Router) + Tailwind in `web/` — tokens from §1.1 / §1.1b.
+- **Fonts:** Geist Mono (system fallback `ui-monospace` until woff2 lands); display optional.
+- **No video iframe** on any page.
+- **Content source of truth:** this IA + live modules under `trueline/`, `seed/`, `skill/`, `scripts/`.
 
 ---
 
 ## 6. Open items
 
-- [ ] Hero display font license/asset for Alpha Lyrae (fallback: GeistMono display).
-- [ ] CTA band photo asset (GPU-cluster or abstract landscape) — or pure lime fill.
-- [x] PR modal tokens locked to palette (§1.1b) — lime = alert, no second hue.
-- [x] Live readout copy aligned to engine (deployment, `@datahub`, no null-rate).
-- [ ] Verify typewriter phrase list matches final demo script (Moment 1 wording).
-- [ ] Confirm `/demo` video slot vs Devpost upload (page may link out instead of embed).
-- [ ] Optional web shell implementing §1.7 (CLI + GitHub comment already ship the content model).
+- [x] Five-page IA locked to codebase (no `/gates` app shell).
+- [x] No in-site demo video — YouTube external only.
+- [x] PR modal tokens locked to palette (§1.1b).
+- [ ] YouTube URL placeholder → real link after upload.
+- [ ] Optional Alpha Lyrae woff2.
+- [ ] Deploy `web/` (Vercel/static).
