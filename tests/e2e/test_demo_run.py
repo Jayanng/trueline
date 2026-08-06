@@ -61,9 +61,10 @@ def test_demo_pr_is_critical_dry_run(e2e_enabled):
         text=True,
         env=env,
     )
-    assert out.returncode == 1, out.stdout + out.stderr
+    assert out.returncode == 0, out.stdout + out.stderr
     payload = json.loads(out_json.read_text(encoding="utf-8"))
     assert payload["verdict"] == "CRITICAL"
+    assert payload["decision"] == "REVIEW"
     assert any("fraud_model_v4" in str(t["affected"]) for t in payload["tables"])
     assert payload["dry_run"] is True
     assert "nothing was written" in out.stdout.lower() or "dry-run" in out.stdout.lower()
@@ -91,7 +92,7 @@ def test_demo_pr_commit_then_verify(e2e_enabled):
         text=True,
         env=env,
     )
-    assert out.returncode == 1, out.stdout + out.stderr
+    assert out.returncode == 0, out.stdout + out.stderr
     assert "COMMITTED" in out.stdout
     assert "VERIFIED" in out.stdout
     # second run is idempotent

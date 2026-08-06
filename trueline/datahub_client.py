@@ -647,7 +647,6 @@ class DataHubGateway:
             upstream=DatasetUrn.from_string(upstream.urn),
             downstream=DatasetUrn.from_string(downstream.urn),
             column_lineage=usable,
-            emit_mode="SYNC_WAIT" if wait else "SYNC_PRIMARY",
         )
 
     def add_term(self, ref: TableRef, column: str, term_urn: str) -> None:
