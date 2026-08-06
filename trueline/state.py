@@ -53,6 +53,15 @@ class StateStore:
                 row = await cur.fetchone()
         return row is not None
 
+    async def proposal_status(self, kind: str, target_urn: str, detail: dict) -> str | None:
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT status FROM proposals WHERE kind=? AND target_urn=? AND detail_hash=?",
+                (kind, target_urn, _hash(detail)),
+            ) as cur:
+                row = await cur.fetchone()
+        return row[0] if row else None
+
     async def add_proposal(self, run_id: str, kind: str, target_urn: str, detail: dict) -> str:
         if await self.proposal_exists(kind, target_urn, detail):
             return ""
@@ -69,6 +78,14 @@ class StateStore:
     async def set_status(self, proposal_id: str, status: str) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute("UPDATE proposals SET status=? WHERE id=?", (status, proposal_id))
+            await db.commit()
+
+    async def set_status_for(self, kind: str, target_urn: str, detail: dict, status: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "UPDATE proposals SET status=? WHERE kind=? AND target_urn=? AND detail_hash=?",
+                (status, kind, target_urn, _hash(detail)),
+            )
             await db.commit()
 
     async def list_proposals(self, status: str | None = None) -> list[dict]:

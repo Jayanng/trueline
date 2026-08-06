@@ -80,6 +80,20 @@ def test_apply_refuses_empty_lineage_mapping(tmp_path):
     assert not any(w[0] == "LINEAGE" for w in gateway.writes)
 
 
+def test_apply_retries_stale_proposed_after_crash(tmp_path):
+    gateway = FakeGateway(seed=LINEAGE, terms=TERMS)
+    state = StateStore(tmp_path / "state.db")
+    run(state.init())
+    proposals = run(plan_writebacks(FILE, FEATURE, FEATURE_SQL, gateway, "PR #2847"))
+    for p in proposals:
+        run(state.add_proposal("crashed-run", p.kind, p.target_urn, p.detail))
+    out = run(apply_proposals(proposals, gateway, state, "run-1"))
+    assert all(status == "COMMITTED" for _, status, _ in out)
+    assert any(w[0] == "LINEAGE" for w in gateway.writes)
+    second = run(apply_proposals(proposals, gateway, state, "run-2"))
+    assert all(status == "SKIPPED" for _, status, _ in second)
+
+
 def test_fake_gateway_add_lineage_rejects_empty():
     gateway = FakeGateway()
     import pytest

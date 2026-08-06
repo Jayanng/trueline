@@ -163,7 +163,7 @@ async def apply_proposals(
     """
     results: list[tuple[Proposal, str, CatalogWarning | None]] = []
     for p in proposals:
-        if await state.proposal_exists(p.kind, p.target_urn, p.detail):
+        if await state.proposal_status(p.kind, p.target_urn, p.detail) == "COMMITTED":
             results.append((p, "SKIPPED", None))
             continue
         if p.kind == "LINEAGE":
@@ -175,10 +175,6 @@ async def apply_proposals(
                 )
                 results.append((p, "BLOCKED_EMPTY", warn))
                 continue
-        proposal_id = await state.add_proposal(run_id, p.kind, p.target_urn, p.detail)
-        if not proposal_id:
-            results.append((p, "SKIPPED", None))
-            continue
         if p.kind == "LINEAGE":
             upstream = parse_dataset_urn(p.detail["upstream"])
             downstream = parse_dataset_urn(p.target_urn)
@@ -203,6 +199,10 @@ async def apply_proposals(
             )
         else:  # pragma: no cover - future kinds must be handled explicitly
             raise ValueError(f"unknown proposal kind: {p.kind}")
-        await state.set_status(proposal_id, "COMMITTED")
+        proposal_id = await state.add_proposal(run_id, p.kind, p.target_urn, p.detail)
+        if proposal_id:
+            await state.set_status(proposal_id, "COMMITTED")
+        else:
+            await state.set_status_for(p.kind, p.target_urn, p.detail, "COMMITTED")
         results.append((p, "COMMITTED", None))
     return results
