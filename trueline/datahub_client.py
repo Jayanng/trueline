@@ -57,7 +57,12 @@ class DataHubGateway:
         result = _mcp_call(self.mcp_url, "tools/call", {"name": tool, "arguments": args or {}})
         if "result" in result and result["result"]["content"]:
             text = result["result"]["content"][0].get("text", "{}")
-            return json.loads(text) if isinstance(text, str) else text
+            if isinstance(text, str):
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return {"text": text}
+            return text
         return {}
 
     def search(self, query: str, entity_type: str = "dataset", limit: int = 20) -> list[str]:
@@ -84,7 +89,7 @@ class DataHubGateway:
     def downstream(self, ref: TableRef, column: str | None = None, max_hops: int = 4) -> list[LineageResult]:
         data = self._mcp("get_lineage", {
             "urn": ref.urn,
-            "direction": "DOWNSTREAM",
+            "upstream": False,
             "max_hops": max_hops,
         })
         entities = data.get("entities", []) if isinstance(data, dict) else data
