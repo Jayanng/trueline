@@ -12,12 +12,23 @@ Write a 2-3 paragraph summary in plain English suitable for a PR comment. Do NOT
 
 
 class Agent:
+    """Optional LLM prose layer over engine facts (OpenAI-compatible APIs).
+
+    Default target: GMI Cloud (https://api.gmi-serving.com/v1) with
+    DeepSeek-V4-Flash. Without an API key the pipeline still works — summarize
+    returns "" and comments render from deterministic engine output only.
+    """
+
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._client = None
-        if cfg.has_anthropic:
-            import anthropic
-            self._client = anthropic.AsyncAnthropic(api_key=cfg.anthropic_api_key)
+        if cfg.has_llm:
+            from openai import AsyncOpenAI
+
+            self._client = AsyncOpenAI(
+                api_key=cfg.llm_api_key,
+                base_url=cfg.llm_base_url,
+            )
 
     def run_coro(self, coro):
         return asyncio.new_event_loop().run_until_complete(coro)
@@ -26,12 +37,15 @@ class Agent:
         if self._client is None:
             return ""
         try:
-            msg = await self._client.messages.create(
-                model=self.cfg.anthropic_model,
-                system=_SYSTEM,
-                messages=[{"role": "user", "content": str(context)}],
+            msg = await self._client.chat.completions.create(
+                model=self.cfg.llm_model,
+                messages=[
+                    {"role": "system", "content": _SYSTEM},
+                    {"role": "user", "content": str(context)},
+                ],
                 max_tokens=500,
             )
-            return msg.content[0].text if msg.content else ""
+            choice = msg.choices[0].message if msg.choices else None
+            return (choice.content or "").strip() if choice else ""
         except Exception:
             return ""

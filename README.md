@@ -53,8 +53,10 @@ ML-aware severity model). PR link: <LINK> (insert after opening the PR).
   ML entities. Created with real SDK calls; labeled as demo entities in `seed/README.md`.
 - Every verdict is computed live from the graph. No canned comments, no invented
   metrics (no null-rate or latency numbers anywhere).
-- Without `ANTHROPIC_API_KEY` the agent runs in heuristic mode: comments render from
-  engine facts; nothing is fabricated.
+- Without `GMI_API_KEY` (optional LLM prose) the agent runs in heuristic mode:
+  comments render from engine facts; nothing is fabricated. With a GMI key,
+  summaries use DeepSeek V4 Flash via `https://api.gmi-serving.com/v1`
+  (override with `GMI_MODEL` / `GMI_BASE_URL`).
 
 ## Criteria map
 

@@ -46,13 +46,38 @@ def test_load_table_map(tmp_path: Path):
 
 
 def test_config_defaults(monkeypatch):
-    for key in ("DATAHUB_GMS_URL", "DATAHUB_GMS_TOKEN", "MCP_SERVER_URL", "ANTHROPIC_API_KEY", "TRUELINE_DRY_RUN"):
+    for key in (
+        "DATAHUB_GMS_URL",
+        "DATAHUB_GMS_TOKEN",
+        "MCP_SERVER_URL",
+        "GMI_API_KEY",
+        "LLM_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GMI_MODEL",
+        "LLM_MODEL",
+        "ANTHROPIC_MODEL",
+        "GMI_BASE_URL",
+        "LLM_BASE_URL",
+        "TRUELINE_DRY_RUN",
+    ):
         monkeypatch.delenv(key, raising=False)
     cfg = Config()
     assert cfg.gms_url == "http://localhost:8080"
     assert cfg.mcp_url == "http://127.0.0.1:8000/mcp"
     assert cfg.dry_run is True
+    assert cfg.has_llm is False
     assert cfg.has_anthropic is False
+    assert cfg.llm_base_url == "https://api.gmi-serving.com/v1"
+    assert cfg.llm_model == "deepseek-ai/DeepSeek-V4-Flash"
+
+
+def test_config_gmi_env(monkeypatch):
+    monkeypatch.setenv("GMI_API_KEY", "gmi-test-key")
+    monkeypatch.setenv("GMI_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")
+    cfg = Config()
+    assert cfg.has_llm is True
+    assert cfg.llm_api_key == "gmi-test-key"
+    assert cfg.llm_model == "deepseek-ai/DeepSeek-V4-Flash-0731"
 
 
 def test_config_dry_run_false(monkeypatch):

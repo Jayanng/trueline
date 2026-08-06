@@ -12,7 +12,7 @@ dependencies = [
     "mcp-server-datahub>=0.5.0",
     "sqlglot>=25.0.0",
     "unidiff>=0.7.5",
-    "anthropic>=0.40.0",
+    "openai>=1.40.0",
     "aiosqlite>=0.20.0",
     "python-dotenv>=1.0.0",
 ]

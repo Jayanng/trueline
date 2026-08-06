@@ -2,35 +2,45 @@ from trueline.agent import Agent
 from trueline.config import Config
 
 
-class _FakeMessages:
-    class _Block:
-        type = "text"
-        text = "Two files changed. The drop on return_date is critical because it feeds fraud_model_v4 in prod."
-
-    class _Messages:
+class _FakeOpenAI:
+    class _Completions:
         async def create(self, **kwargs):
-            return _FakeMessages._Response()
+            return _FakeOpenAI._Response()
+
+    class _Chat:
+        def __init__(self, outer):
+            self.completions = outer._Completions()
+
+    class _Message:
+        content = (
+            "Two files changed. The drop on return_date is critical because "
+            "it feeds fraud_model_v4 in prod."
+        )
+
+    class _Choice:
+        def __init__(self):
+            self.message = _FakeOpenAI._Message()
 
     class _Response:
         def __init__(self):
-            self.content = [_FakeMessages._Block()]
+            self.choices = [_FakeOpenAI._Choice()]
 
     def __init__(self):
-        self.messages = self._Messages()
+        self.chat = self._Chat(self)
 
 
-def test_summarize_returns_empty_when_no_key(capsys):
-    cfg = Config(anthropic_api_key="")
+def test_summarize_returns_empty_when_no_key():
+    cfg = Config(llm_api_key="")
     agent = Agent(cfg)
     result = agent.run_coro(agent.summarize({"verdicts": [], "proposals": []}))
     assert result == ""
 
 
 def test_summarize_returns_prose(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+    monkeypatch.setenv("GMI_API_KEY", "gmi-fake")
+    monkeypatch.setenv("GMI_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
     cfg = Config()
     agent = Agent(cfg)
-    agent._client = _FakeMessages()
+    agent._client = _FakeOpenAI()
     result = agent.run_coro(agent.summarize({"verdicts": [], "proposals": []}))
     assert "fraud_model_v4" in result
