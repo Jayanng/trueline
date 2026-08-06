@@ -62,11 +62,7 @@ def compute_verdict(
                 i.name,
                 i.kind,
                 i.owner,
-                (
-                    f"downstream ML path hops={len(i.path) or i.kind}"
-                    if i.path
-                    else "downstream ML entity"
-                ),
+                f"downstream {i.kind}",
             )
             for i in ml
         )

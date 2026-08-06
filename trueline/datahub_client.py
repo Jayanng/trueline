@@ -85,10 +85,15 @@ def _name_from_urn(urn: str) -> str:
     """Best-effort display name from a DataHub URN."""
     if "(" in urn and urn.endswith(")"):
         inner = urn[urn.index("(") + 1 : -1]
-        # mlModel / mlModelGroup: (platformUrn, name, env)
-        if urn.startswith("urn:li:mlModel:") or urn.startswith("urn:li:mlModelGroup:"):
-            parts = inner.split(",")
-            if len(parts) >= 2:
+        # 3-part ML URNs: (platformUrn, name, env) — platformUrn itself has colons, no commas
+        # but split carefully from the right for env + name.
+        if urn.startswith((
+            "urn:li:mlModel:",
+            "urn:li:mlModelGroup:",
+            "urn:li:mlModelDeployment:",
+        )):
+            parts = inner.rsplit(",", 2)
+            if len(parts) == 3:
                 return parts[1]
         # mlFeature: (namespace, name)
         if urn.startswith("urn:li:mlFeature:"):
@@ -96,8 +101,8 @@ def _name_from_urn(urn: str) -> str:
             return parts[-1] if parts else urn
         # dataset: (platformUrn, qualifiedName, env)
         if urn.startswith("urn:li:dataset:"):
-            parts = inner.split(",")
-            if len(parts) >= 2:
+            parts = inner.rsplit(",", 2)
+            if len(parts) == 3:
                 return parts[1].rsplit(".", 1)[-1]
     return urn.rsplit(":", 1)[-1]
 
