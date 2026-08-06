@@ -54,6 +54,18 @@ def git_diff(repo: Path, base: str, head: str) -> str:
     return proc.stdout
 
 
+def git_show(repo: Path, rev: str, path: str) -> str:
+    """Read a file as it exists at ``rev`` (not the working tree)."""
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{rev}:{path}"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout
+
+
 async def run(args: argparse.Namespace) -> int:
     cfg = Config()
     # --commit only applies when dry-run is off (env TRUELINE_DRY_RUN=false)
@@ -82,8 +94,8 @@ async def run(args: argparse.Namespace) -> int:
         if ref is None:
             print(f"SKIP (unmapped): {file.file_path}")
             continue
-        sql_path = repo / file.file_path
-        sql = sql_path.read_text(encoding="utf-8") if sql_path.exists() else ""
+        # Use PR head SQL so write-back planning reflects the change under review.
+        sql = git_show(repo, args.head, file.file_path)
         results = gateway.downstream(ref, max_hops=4)
         owners = {r.urn: gateway.owners(r.urn) for r in results}
         envs = {r.urn: gateway.environment(r.urn) for r in results}
@@ -113,8 +125,7 @@ async def run(args: argparse.Namespace) -> int:
             ref = table_map.get(file.file_path)
             if ref is None:
                 continue
-            sql_path = repo / file.file_path
-            sql = sql_path.read_text(encoding="utf-8") if sql_path.exists() else ""
+            sql = git_show(repo, args.head, file.file_path)
             remaining += len(await plan_writebacks(file, ref, sql, gateway, f"PR #{args.pr} (verify)"))
         if remaining == 0:
             print(f"VERIFIED: lineage gap closed ({len(proposals)} edge(s) now in the graph)")
