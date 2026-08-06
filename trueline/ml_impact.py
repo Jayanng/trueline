@@ -45,7 +45,7 @@ def find_ml_impacts(
     env_by_urn: dict[str, str],
 ) -> list[MLImpact]:
     seen: dict[str, MLImpact] = {}
-    for r in sorted(results, key=lambda x: x.hops):
+    for r in sorted(results, key=lambda x: -x.hops):
         kind = ml_kind(r.urn)
         if kind is None:
             continue
@@ -55,12 +55,13 @@ def find_ml_impacts(
         for p in (r.paths or ()):
             path = p
             break
+        owners = owners_by_urn.get(r.urn, [])
         seen[r.urn] = MLImpact(
             name=r.name,
             urn=r.urn,
             kind=kind,
             env=env_by_urn.get(r.urn, ""),
-            owner=owners_by_urn.get(r.urn, [None])[0],
+            owner=owners[0] if owners else None,
             path=path,
         )
     return list(seen.values())
