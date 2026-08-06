@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from datahub.metadata.urns import DatasetUrn, GlossaryTermUrn
 from datahub.sdk import DataHubClient
@@ -164,6 +164,45 @@ class DataHubGateway:
         self.cfg = cfg
         self.mcp_url = getattr(cfg, "mcp_url", os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp"))
         self._client = DataHubClient(server=cfg.gms_url, token=cfg.gms_token)
+        self._gms_cache: dict[str, dict] = {}
+
+    def _gms_entity(self, urn: str) -> dict:
+        """Full entity+aspects from GMS REST (MCP get_entities often strips ML fields)."""
+        if urn in self._gms_cache:
+            return self._gms_cache[urn]
+        parsed = urlparse(self.cfg.gms_url if "://" in self.cfg.gms_url else f"http://{self.cfg.gms_url}")
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (443 if parsed.scheme == "https" else 8080)
+        path = f"/entitiesV2/{quote(urn, safe='')}"
+        headers = {"Accept": "application/json"}
+        if self.cfg.gms_token:
+            headers["Authorization"] = f"Bearer {self.cfg.gms_token}"
+        conn_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
+        conn = conn_cls(host, port, timeout=30)
+        try:
+            conn.request("GET", path, headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read().decode()
+        finally:
+            conn.close()
+        if resp.status >= 400:
+            self._gms_cache[urn] = {}
+            return {}
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = {}
+        self._gms_cache[urn] = data if isinstance(data, dict) else {}
+        return self._gms_cache[urn]
+
+    def _aspect_value(self, urn: str, aspect_name: str) -> dict:
+        data = self._gms_entity(urn)
+        aspects = data.get("aspects") or {}
+        block = aspects.get(aspect_name) or {}
+        if not isinstance(block, dict):
+            return {}
+        val = block.get("value") or {}
+        return val if isinstance(val, dict) else {}
 
     def _mcp(self, tool: str, args: dict[str, Any] | None = None) -> Any:
         result = _mcp_call(self.mcp_url, "tools/call", {"name": tool, "arguments": args or {}})
@@ -261,6 +300,16 @@ class DataHubGateway:
         return str(owner) if owner else ""
 
     def environment(self, urn: str) -> str:
+        # GMS aspects first (MCP projection often omits customProperties).
+        for aspect in (
+            "mlModelProperties",
+            "mlModelDeploymentProperties",
+            "mlModelGroupProperties",
+            "datasetProperties",
+        ):
+            cp = (self._aspect_value(urn, aspect).get("customProperties") or {})
+            if isinstance(cp, dict) and cp.get("environment"):
+                return str(cp["environment"])
         ent = self.entity(urn)
         props = ent.get("customProperties") or {}
         if isinstance(props, dict) and props.get("environment"):
@@ -434,7 +483,10 @@ class DataHubGateway:
         for urn in dict.fromkeys(candidates):
             if not urn.startswith("urn:li:mlFeature:"):
                 continue
-            sources = self._extract_urn_list(self.entity(urn), ("sources",))
+            # Prefer GMS aspects (full fidelity) over MCP entity projection.
+            sources = list(self._aspect_value(urn, "mlFeatureProperties").get("sources") or [])
+            if not sources:
+                sources = self._extract_urn_list(self.entity(urn), ("sources",))
             if source_urn not in sources:
                 continue
             feature_urns.append(urn)
@@ -460,10 +512,13 @@ class DataHubGateway:
         for m_urn in dict.fromkeys(model_candidates):
             if not m_urn.startswith("urn:li:mlModel:"):
                 continue
-            ent = self.entity(m_urn)
-            if ent.get("error"):
-                continue
-            model_features = self._extract_urn_list(ent, ("mlFeatures", "features"))
+            props = self._aspect_value(m_urn, "mlModelProperties")
+            model_features = list(props.get("mlFeatures") or [])
+            if not model_features:
+                ent = self.entity(m_urn)
+                if ent.get("error"):
+                    continue
+                model_features = self._extract_urn_list(ent, ("mlFeatures", "features"))
             linked = [f for f in feature_urns if f in model_features]
             if not linked:
                 continue
@@ -478,30 +533,30 @@ class DataHubGateway:
             ))
             if max_hops < 3:
                 continue
-            for g_urn in self._extract_urn_list(ent, ("groups", "group")):
-                if not g_urn.startswith("urn:li:mlModelGroup:"):
+            groups = list(props.get("groups") or [])
+            for g_urn in groups:
+                if not str(g_urn).startswith("urn:li:mlModelGroup:"):
                     continue
                 out.append(LineageResult(
-                    urn=g_urn,
+                    urn=str(g_urn),
                     entity_type="mlmodelgroup",
                     platform="",
-                    name=_name_from_urn(g_urn),
+                    name=_name_from_urn(str(g_urn)),
                     hops=3,
-                    paths=((source_urn, f0, m_urn, g_urn),),
+                    paths=((source_urn, f0, m_urn, str(g_urn)),),
                 ))
             # Deployments complete training data → features → models → deployments
-            if max_hops >= 3:
-                for d_urn in self._extract_urn_list(ent, ("deployments", "deployment")):
-                    if not d_urn.startswith("urn:li:mlModelDeployment:"):
-                        continue
-                    out.append(LineageResult(
-                        urn=d_urn,
-                        entity_type="mlmodeldeployment",
-                        platform="",
-                        name=_name_from_urn(d_urn),
-                        hops=3,
-                        paths=((source_urn, f0, m_urn, d_urn),),
-                    ))
+            for d_urn in list(props.get("deployments") or []):
+                if not str(d_urn).startswith("urn:li:mlModelDeployment:"):
+                    continue
+                out.append(LineageResult(
+                    urn=str(d_urn),
+                    entity_type="mlmodeldeployment",
+                    platform="",
+                    name=_name_from_urn(str(d_urn)),
+                    hops=3,
+                    paths=((source_urn, f0, m_urn, str(d_urn)),),
+                ))
         return out
 
     @staticmethod
