@@ -239,12 +239,7 @@ class DataHubGateway:
         )
         names: set[str] = set()
         for o in owners_list:
-            if isinstance(o, str):
-                owner = o
-            elif isinstance(o, dict):
-                owner = o.get("owner") or o.get("urn") or ""
-            else:
-                continue
+            owner = self._owner_to_str(o)
             if not owner:
                 continue
             if owner.startswith("urn:li:corpuser:"):
@@ -252,6 +247,18 @@ class DataHubGateway:
             else:
                 names.add(owner)
         return sorted(names)
+
+    @staticmethod
+    def _owner_to_str(o: Any) -> str:
+        """Normalize MCP/SDK owner payloads to a string URN or username."""
+        if isinstance(o, str):
+            return o
+        if not isinstance(o, dict):
+            return ""
+        owner = o.get("owner") or o.get("urn") or o.get("username") or ""
+        if isinstance(owner, dict):
+            owner = owner.get("urn") or owner.get("username") or owner.get("value") or ""
+        return str(owner) if owner else ""
 
     def environment(self, urn: str) -> str:
         ent = self.entity(urn)
