@@ -45,7 +45,7 @@ def main() -> None:
     feature_props = MLFeaturePropertiesClass(
         description="Fraud risk score feature; downstream of order_items (demo tail).",
         dataType="DOUBLE",
-        sources=[FEATURE_DATASET],
+        sources=[{"urn": FEATURE_DATASET}],
     )
     mcp = MetadataChangeProposalWrapper(entityType="mlFeature", entityUrn=ML_FEATURE_URN, aspectName="mlFeatureProperties", aspect=feature_props)
     emitter.emit_mcp(mcp)
