@@ -45,11 +45,20 @@ python -m mcp_server_datahub   # or your existing MCP process on :8000
 ## Run the guard
 
 ```bash
-python scripts/run_local.py --repo . --base main --head demo/pr-2847 --pr 2847
+# Red PR (CRITICAL) — drop return_date
+python scripts/run_local.py --repo . --base main --head demo/pr-2847 --pr 2847 \
+  --json .trueline/verdict.json --comment-out .trueline/comment.md --notify-out .trueline/notify.json
+
+# Green PR twin (LOW) — additive notes only
+python scripts/run_local.py --repo . --base main --head demo/pr-safe-add --pr 2848
+
+# Shadow mode — comment CRITICAL but exit 0 (brownfield)
+python scripts/run_local.py --repo . --base main --head demo/pr-2847 --pr 2847 --shadow
 ```
 
 Dry-run by default: proposes, writes nothing. `--commit --verify` applies after merge
 and re-queries the graph to prove the gap closed. Exit codes: **0 PASS · 1 BLOCK · 2 error**.
+PR comments include a Mermaid blast-radius diagram, “what if we merge?”, and owner notify hints.
 
 Optional LLM prose (does **not** affect severity):
 
