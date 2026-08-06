@@ -56,7 +56,7 @@ def main() -> None:
     # 1) MLFeature
     emitter.emit_mcp(_mcp("mlFeature", ML_FEATURE_URN, "mlFeatureProperties", {
         "description": "Fraud risk score feature; downstream of order_items (demo tail).",
-        "dataType": "DOUBLE",
+        "dataType": "CONTINUOUS",
     }))
     print(f"seeded MLFeature {ML_FEATURE_URN}")
 
