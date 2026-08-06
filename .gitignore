@@ -10,3 +10,10 @@ build/
 *.egg-info/
 node_modules/
 .next/
+web/.next/
+
+# Internal design & build planning (not product runtime)
+DESIGN.md
+docs/superpowers/
+docs/CREATIVE_IMPROVEMENTS.md
+docs/DEMO_SCRIPT.md
