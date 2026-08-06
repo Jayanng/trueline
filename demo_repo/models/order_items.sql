@@ -4,5 +4,6 @@ select
     product_id,
     order_date,
     return_date,
-    order_total
+    order_total,
+    cast(null as varchar) as notes
 from {{ ref('orders') }}
