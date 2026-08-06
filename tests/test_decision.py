@@ -59,6 +59,20 @@ def test_downstream_impact_without_matching_contract_requires_review():
     assert result.decision == Decision.REVIEW
 
 
+def test_unmatched_non_additive_change_alongside_protected_add_requires_review():
+    result = evaluate_table(
+        DATASET,
+        (
+            ChangedColumn("lactate_mmol_l", ChangeKind.ADD),
+            ChangedColumn("notes", ChangeKind.DROP),
+        ),
+        LINEAGE,
+        [],
+        (CONTRACT,),
+    )
+    assert result.decision == Decision.REVIEW
+
+
 def test_protected_input_without_lineage_is_quarantined():
     warning = no_downstream_at_all(DATASET, "patient_labs")
     result = evaluate_table(

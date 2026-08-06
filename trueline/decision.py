@@ -63,12 +63,16 @@ def evaluate_table(
     decisions: list[Decision] = []
     reasons: list[str] = []
 
+    matched_columns = {changed_column.name for _, _, changed_column in matches}
+    if lineage_urns and any(
+        column.name not in matched_columns and column.kind != ChangeKind.ADD
+        for column in changed_columns
+    ):
+        decisions.append(Decision.REVIEW)
+        reasons.append("Changed column has downstream lineage but no matching protected input")
+
     if not matches:
-        decision = Decision.ALLOW
-        if any(column.kind != ChangeKind.ADD for column in changed_columns) and lineage_urns:
-            decision = Decision.REVIEW
-            reasons.append("Changed column has downstream lineage but no matching protected input")
-        return TableDecision(decision, (), tuple(reasons))
+        return TableDecision(worst_decision(decisions), (), tuple(reasons))
 
     for contract, critical_input, changed_column in matches:
         warning_codes = {warning.code for warning in catalog_warnings}
