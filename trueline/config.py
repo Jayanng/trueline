@@ -86,6 +86,11 @@ class Config:
         default_factory=lambda: os.getenv("TRUELINE_DRY_RUN", "true").lower() in ("1", "true", "yes")
     )
     state_db: Path = field(default_factory=lambda: Path(os.getenv("TRUELINE_STATE_DB", ".trueline/state.db")))
+    contracts_path: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("TRUELINE_CONTRACTS_PATH", "contracts/model-change-contracts.json")
+        )
+    )
 
     @property
     def has_llm(self) -> bool:
