@@ -122,13 +122,12 @@ async def run(args: argparse.Namespace) -> int:
             print(f"VERIFY FAILED: {remaining} missing edge(s) remain")
             return 2
 
-    summary = agent.run_coro(
-        agent.summarize(
-            {
-                "verdicts": [_verdict_to_dict(v) for v in verdicts],
-                "proposals": [p.__dict__ for p in proposals],
-            }
-        )
+    # Already inside asyncio.run — await directly (do not open a nested loop).
+    summary = await agent.summarize(
+        {
+            "verdicts": [_verdict_to_dict(v) for v in verdicts],
+            "proposals": [p.__dict__ for p in proposals],
+        }
     )
     comment = render_comment(
         verdicts,
