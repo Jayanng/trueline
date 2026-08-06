@@ -81,7 +81,11 @@ def main() -> None:
             env = gateway.environment(urn)
             if env != "PROD":
                 failures.append(f"{label} environment not PROD (got {env!r})")
-        for query, urn in (("sepsis_risk_v3", ML_MODEL_URN), ("icu-early-warning", ML_DEPLOY_URN)):
+        # Search covers models/features, but current DataHub Core (v1.7.0)
+        # excludes MLMODEL_DEPLOYMENT from the GraphQL EntityType search enum
+        # entirely — deployments are proven live via downstream presence, exact
+        # path, and GMS aspect checks above instead of full-text search.
+        for query, urn in (("sepsis_risk_v3", ML_MODEL_URN),):
             if not _search_contains(gateway, query, urn):
                 failures.append(f"{query} not found via MCP search")
     except Exception as exc:

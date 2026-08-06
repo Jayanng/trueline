@@ -383,7 +383,7 @@ class DataHubGateway:
         for base in dict.fromkeys(bases):
             out = self._merge_lineage(
                 out,
-                self._ml_aspect_edges(base, known=out, max_hops=max_hops),
+                self._ml_aspect_edges(base, known=out, max_hops=max_hops, root_urn=ref.urn),
             )
         return out
 
@@ -466,14 +466,41 @@ class DataHubGateway:
                 seen.add(r.urn)
         return merged
 
+    @staticmethod
+    def _dataset_chain(root_urn: str, base_urn: str, known: list[LineageResult]) -> tuple[str, ...]:
+        """Full root→base dataset chain, approximated from lineage hop counts.
+
+        Live SDK lineage results rarely carry path tuples, so the chain is
+        rebuilt from hop order: every dataset strictly closer to the root than
+        the base is assumed to sit on the root→base path (siblings share a hop
+        count and are excluded).
+        """
+        if base_urn == root_urn:
+            return (root_urn,)
+        hops_by_urn = {r.urn: int(r.hops or 1) for r in known}
+        base_hops = hops_by_urn.get(base_urn, 1)
+        middle = sorted(
+            (
+                r.urn
+                for r in known
+                if r.urn.startswith("urn:li:dataset:")
+                and r.urn != root_urn
+                and hops_by_urn.get(r.urn, 99) < base_hops
+            ),
+            key=lambda urn: hops_by_urn.get(urn, 99),
+        )
+        return (root_urn, *middle, base_urn)
+
     def _ml_aspect_edges(
         self,
         source_urn: str,
         known: list[LineageResult],
         max_hops: int = 4,
+        root_urn: str | None = None,
     ) -> list[LineageResult]:
         """Follow real ML aspect links declared on live entities only."""
         out: list[LineageResult] = []
+        chain = self._dataset_chain(root_urn or source_urn, source_urn, known)
         candidates = [r.urn for r in known]
         short = _dataset_short_name(source_urn)
         queries = [q for q in (short, "*") if q]
@@ -500,8 +527,8 @@ class DataHubGateway:
                 entity_type="mlfeature",
                 platform="",
                 name=_name_from_urn(urn),
-                hops=1,
-                paths=((source_urn, urn),),
+                hops=len(chain),
+                paths=((*chain, urn),),
             ))
 
         if max_hops < 2 or not feature_urns:
@@ -533,8 +560,8 @@ class DataHubGateway:
                 entity_type="mlmodel",
                 platform="",
                 name=_name_from_urn(m_urn),
-                hops=2,
-                paths=((source_urn, f0, m_urn),),
+                hops=len(chain) + 1,
+                paths=((*chain, f0, m_urn),),
             ))
             if max_hops < 3:
                 continue
@@ -547,8 +574,8 @@ class DataHubGateway:
                     entity_type="mlmodelgroup",
                     platform="",
                     name=_name_from_urn(str(g_urn)),
-                    hops=3,
-                    paths=((source_urn, f0, m_urn, str(g_urn)),),
+                    hops=len(chain) + 2,
+                    paths=((*chain, f0, m_urn, str(g_urn)),),
                 ))
             # Deployments complete training data → features → models → deployments
             for d_urn in list(props.get("deployments") or []):
@@ -559,8 +586,8 @@ class DataHubGateway:
                     entity_type="mlmodeldeployment",
                     platform="",
                     name=_name_from_urn(str(d_urn)),
-                    hops=3,
-                    paths=((source_urn, f0, m_urn, str(d_urn)),),
+                    hops=len(chain) + 2,
+                    paths=((*chain, f0, m_urn, str(d_urn)),),
                 ))
         return out
 
