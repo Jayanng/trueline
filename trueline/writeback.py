@@ -9,6 +9,17 @@ from .config import TableRef, parse_dataset_urn
 from .datahub_client import DataHubGateway
 from .diff_parser import ChangedFile
 from .state import StateStore
+from .warnings import CatalogWarning, empty_lineage_mapping_refused
+
+
+def _mapping_is_usable(mapping: dict | None) -> bool:
+    """True only if at least one downstream col maps to a non-empty upstream list."""
+    if not mapping or not isinstance(mapping, dict):
+        return False
+    for _down, ups in mapping.items():
+        if ups and any(str(u).strip() for u in ups):
+            return True
+    return False
 
 _JINJA_REF = re.compile(r"{{\s*ref\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
 _JINJA_OTHER = re.compile(r"{{.*?}}", re.DOTALL)
@@ -140,24 +151,48 @@ async def plan_term_drift(
 
 
 async def apply_proposals(
-    proposals: list[Proposal], gateway: DataHubGateway, state: StateStore, run_id: str
-) -> list[tuple[Proposal, str]]:
-    results: list[tuple[Proposal, str]] = []
+    proposals: list[Proposal],
+    gateway: DataHubGateway,
+    state: StateStore,
+    run_id: str,
+) -> list[tuple[Proposal, str, CatalogWarning | None]]:
+    """Apply proposals. Never commit empty column lineage (silent graph wipe risk).
+
+    Returns (proposal, status, optional warning). Status is one of:
+    COMMITTED | SKIPPED | BLOCKED_EMPTY.
+    """
+    results: list[tuple[Proposal, str, CatalogWarning | None]] = []
     for p in proposals:
         if await state.proposal_exists(p.kind, p.target_urn, p.detail):
-            results.append((p, "SKIPPED"))
+            results.append((p, "SKIPPED", None))
             continue
+        if p.kind == "LINEAGE":
+            mapping = p.detail.get("mapping") if isinstance(p.detail, dict) else None
+            if not _mapping_is_usable(mapping):
+                warn = empty_lineage_mapping_refused(
+                    p.target_urn,
+                    str((p.detail or {}).get("upstream", "")),
+                )
+                results.append((p, "BLOCKED_EMPTY", warn))
+                continue
         proposal_id = await state.add_proposal(run_id, p.kind, p.target_urn, p.detail)
         if not proposal_id:
-            results.append((p, "SKIPPED"))
+            results.append((p, "SKIPPED", None))
             continue
         if p.kind == "LINEAGE":
             upstream = parse_dataset_urn(p.detail["upstream"])
             downstream = parse_dataset_urn(p.target_urn)
+            column_lineage = {
+                k: list(v) for k, v in p.detail["mapping"].items() if v
+            }
+            if not _mapping_is_usable(column_lineage):
+                warn = empty_lineage_mapping_refused(p.target_urn, upstream.urn)
+                results.append((p, "BLOCKED_EMPTY", warn))
+                continue
             gateway.add_lineage(
                 upstream=upstream,
                 downstream=downstream,
-                column_lineage={k: list(v) for k, v in p.detail["mapping"].items()},
+                column_lineage=column_lineage,
                 wait=True,
             )
         elif p.kind == "GLOSSARY_TERM":
@@ -169,5 +204,5 @@ async def apply_proposals(
         else:  # pragma: no cover - future kinds must be handled explicitly
             raise ValueError(f"unknown proposal kind: {p.kind}")
         await state.set_status(proposal_id, "COMMITTED")
-        results.append((p, "COMMITTED"))
+        results.append((p, "COMMITTED", None))
     return results

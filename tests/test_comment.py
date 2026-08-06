@@ -173,7 +173,8 @@ def test_comment_explains_quarantine_and_renders_catalog_warnings():
 
     assert "CHANGE DECISION — QUARANTINE" in text
     assert "Safety cannot be proven" in text
-    assert "Catalog warnings" in text
+    assert "Catalog warnings" not in text
+    assert "Review the evidence reasons below" in text
 
 
 def test_notify_payload_includes_decision():
@@ -192,3 +193,20 @@ def test_shadow_banner():
         shadow=True,
     )
     assert "shadow mode" in text.lower()
+
+
+def test_comment_renders_catalog_warnings():
+    from trueline.warnings import no_ml_lineage
+
+    w = no_ml_lineage("urn:li:dataset:(urn:li:dataPlatform:snowflake,t,PROD)", "t")
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.QUARANTINE,
+        table_decisions=[],
+        warnings=[w],
+    )
+    assert "Catalog warnings" in text
+    assert "NO_ML_LINEAGE" in text
+    assert "Remedy" in text

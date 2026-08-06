@@ -64,10 +64,22 @@ def evaluate_table(
     reasons: list[str] = []
 
     matched_columns = {changed_column.name for _, _, changed_column in matches}
-    if lineage_urns and any(
+    protected_dataset = any(
+        critical_input.dataset_urn == dataset_urn
+        for contract in contracts
+        for critical_input in contract.critical_inputs
+    )
+    has_unmatched_non_additive = any(
         column.name not in matched_columns and column.kind != ChangeKind.ADD
         for column in changed_columns
-    ):
+    )
+    if protected_dataset and has_unmatched_non_additive and not lineage_urns:
+        decisions.append(Decision.QUARANTINE)
+        reasons.append(
+            "Protected dataset has a non-additive changed column, but downstream "
+            "lineage evidence is missing"
+        )
+    elif lineage_urns and has_unmatched_non_additive:
         decisions.append(Decision.REVIEW)
         reasons.append("Changed column has downstream lineage but no matching protected input")
 

@@ -602,10 +602,24 @@ class DataHubGateway:
 
     def add_lineage(self, upstream: TableRef, downstream: TableRef,
                     column_lineage: dict[str, list[str]] | None = None, wait: bool = False) -> None:
+        # This write-back API is column-lineage-only; never degrade to a thin table edge.
+        if column_lineage is None:
+            raise ValueError(
+                "refusing add_lineage: column mapping is required for lineage write-back"
+            )
+        usable = {
+            k: list(v) for k, v in column_lineage.items()
+            if v and any(str(x).strip() for x in v)
+        }
+        if not usable:
+            raise ValueError(
+                "refusing add_lineage with empty column_lineage — "
+                "would risk wiping prior fine-grained edges"
+            )
         self._client.lineage.add_lineage(
             upstream=DatasetUrn.from_string(upstream.urn),
             downstream=DatasetUrn.from_string(downstream.urn),
-            column_lineage=column_lineage,
+            column_lineage=usable,
             emit_mode="SYNC_WAIT" if wait else "SYNC_PRIMARY",
         )
 

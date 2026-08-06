@@ -73,6 +73,20 @@ def test_unmatched_non_additive_change_alongside_protected_add_requires_review()
     assert result.decision == Decision.REVIEW
 
 
+def test_unmatched_non_additive_change_on_protected_dataset_without_evidence_quarantines():
+    result = evaluate_table(
+        DATASET,
+        (ChangedColumn("notes", ChangeKind.DROP),),
+        [],
+        [],
+        (CONTRACT,),
+    )
+
+    assert result.decision == Decision.QUARANTINE
+    assert "protected dataset" in " ".join(result.reasons).lower()
+    assert "lineage evidence" in " ".join(result.reasons).lower()
+
+
 def test_protected_input_without_lineage_is_quarantined():
     warning = no_downstream_at_all(DATASET, "patient_labs")
     result = evaluate_table(

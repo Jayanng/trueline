@@ -4,6 +4,7 @@ import re
 
 from .decision import Decision, TableDecision
 from .impact import TableVerdict
+from .warnings import CatalogWarning
 from .writeback import Proposal
 
 _SEV_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
@@ -200,7 +201,7 @@ def render_decision(
         Decision.BLOCK: "A verified production model contract is violated. Merge must stop.",
         Decision.QUARANTINE: (
             "Safety cannot be proven because required catalog evidence is incomplete. "
-            "Review Catalog warnings below."
+            "Review the evidence reasons below."
         ),
         Decision.REVIEW: (
             "Downstream impact exists without a confirmed protected-input violation."
@@ -236,6 +237,23 @@ def render_decision(
     return "\n".join(lines)
 
 
+def render_warnings(warnings: list[CatalogWarning]) -> str:
+    if not warnings:
+        return ""
+    lines = [
+        "### Catalog warnings",
+        "",
+        "Empty or missing lineage is **not** treated as safe. Fix the graph/map before trusting a green merge.",
+        "",
+    ]
+    for w in warnings:
+        urn_bit = f" `{w.urn}`" if w.urn else ""
+        lines.append(f"- **`{w.code}`**{urn_bit} — {w.message}")
+        lines.append(f"  - Remedy: {w.remedy}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_comment(
     verdicts: list[TableVerdict],
     proposals: list[Proposal],
@@ -246,7 +264,7 @@ def render_comment(
     author: str | None = None,
     summary: str | None = None,
     shadow: bool = False,
-    warnings: list | None = None,
+    warnings: list[CatalogWarning] | None = None,
 ) -> str:
     worst = max(verdicts, key=lambda v: _SEV_RANK[v.severity], default=None)
     head = "PASS" if worst is None else worst.severity
@@ -263,6 +281,9 @@ def render_comment(
     if summary:
         out += [summary, ""]
     out.append(render_decision(decision, table_decisions, [v.ref.table for v in verdicts]))
+    warn_block = render_warnings(list(warnings or []))
+    if warn_block:
+        out.append(warn_block)
     blast = render_blast_radius(verdicts)
     if blast:
         out.append(blast)

@@ -54,6 +54,43 @@ def test_apply_proposals_commits_and_idempotent(tmp_path):
     proposals = run(plan_writebacks(FILE, FEATURE, FEATURE_SQL, gateway, "PR #2847"))
     first = run(apply_proposals(proposals, gateway, state, "run-1"))
     second = run(apply_proposals(proposals, gateway, state, "run-2"))
-    assert all(status == "COMMITTED" for _, status in first)
-    assert all(status == "SKIPPED" for _, status in second)
+    assert all(status == "COMMITTED" for _, status, _ in first)
+    assert all(status == "SKIPPED" for _, status, _ in second)
     assert any(w[0] == "LINEAGE" for w in gateway.writes)
+
+
+def test_apply_refuses_empty_lineage_mapping(tmp_path):
+    from trueline.writeback import Proposal
+
+    gateway = FakeGateway(seed=LINEAGE, terms=TERMS)
+    state = StateStore(tmp_path / "state.db")
+    run(state.init())
+    proposals = [
+        Proposal(
+            kind="LINEAGE",
+            target_urn=FEATURE.urn,
+            detail={"upstream": ORDER_ITEMS.urn, "mapping": mapping},
+            source="test",
+        )
+        for mapping in (None, {}, {"x": []}, {"x": ["", "   "]})
+    ]
+    out = run(apply_proposals(proposals, gateway, state, "run-empty"))
+    assert all(status == "BLOCKED_EMPTY" for _, status, _ in out)
+    assert all(warn is not None and warn.code == "EMPTY_LINEAGE_REFUSED" for _, _, warn in out)
+    assert not any(w[0] == "LINEAGE" for w in gateway.writes)
+
+
+def test_fake_gateway_add_lineage_rejects_empty():
+    gateway = FakeGateway()
+    import pytest
+
+    with pytest.raises(ValueError, match="empty column_lineage"):
+        gateway.add_lineage(ORDER_ITEMS, FEATURE, column_lineage={})
+
+
+def test_fake_gateway_add_lineage_rejects_missing_column_mapping():
+    gateway = FakeGateway()
+    import pytest
+
+    with pytest.raises(ValueError, match="column mapping is required"):
+        gateway.add_lineage(ORDER_ITEMS, FEATURE, column_lineage=None)

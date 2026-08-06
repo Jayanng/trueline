@@ -1,5 +1,9 @@
 import argparse
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -175,6 +179,7 @@ async def test_matching_contract_blocks_and_writes_decision_evidence(tmp_path, m
 
     payload = json.loads(args.json.read_text(encoding="utf-8"))
     assert payload["decision"] == "BLOCK"
+    assert payload["notify"]["decision"] == "BLOCK"
     assert payload["notify"]["severity"] == "CRITICAL"
     assert payload["notify"]["text"] == "Trueline CRITICAL on PR #123"
     assert payload["tables"][0]["decision"] == "BLOCK"
@@ -311,3 +316,18 @@ index 1111111..2222222 100644
 
     assert await run_local.run(args) == 0
     assert not any(write[0] == "REVIEWED" for write in gateway.writes)
+
+
+def test_cli_help_is_ascii_and_cp1252_safe():
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "cp1252"
+    proc = subprocess.run(
+        [sys.executable, "scripts/run_local.py", "--help"],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    proc.stdout.encode("ascii")

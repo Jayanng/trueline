@@ -125,7 +125,15 @@ class FakeGateway:
 
     def add_lineage(self, upstream: TableRef, downstream: TableRef,
                     column_lineage: dict[str, list[str]] | None = None, wait: bool = False) -> None:
-        self.writes.append(("LINEAGE", upstream.urn, downstream.urn, column_lineage))
+        if column_lineage is None:
+            raise ValueError("refusing add_lineage: column mapping is required")
+        usable = {
+            k: list(v) for k, v in column_lineage.items()
+            if v and any(str(x).strip() for x in v)
+        }
+        if not usable:
+            raise ValueError("refusing add_lineage with empty column_lineage")
+        self.writes.append(("LINEAGE", upstream.urn, downstream.urn, usable))
 
     def add_term(self, ref: TableRef, column: str, term_urn: str) -> None:
         self.writes.append(("TERM", ref.urn, column, term_urn))

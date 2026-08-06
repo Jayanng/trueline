@@ -74,6 +74,26 @@ def test_add_lineage_records(gateway: FakeGateway):
     assert ("LINEAGE", UP.urn, DOWN.urn, {"risk_score": ["return_date"]}) in gateway.writes
 
 
+@pytest.mark.parametrize(
+    "mapping",
+    [None, {}, {"risk_score": []}, {"risk_score": ["", "   "]}],
+)
+def test_datahub_add_lineage_refuses_unusable_mapping_before_sdk_call(mapping):
+    from types import SimpleNamespace
+
+    from trueline.datahub_client import DataHubGateway
+
+    class LineageSDK:
+        def add_lineage(self, **kwargs):
+            raise AssertionError("SDK must not be called for unusable mappings")
+
+    gateway = DataHubGateway.__new__(DataHubGateway)
+    gateway._client = SimpleNamespace(lineage=LineageSDK())
+
+    with pytest.raises(ValueError, match="refusing add_lineage"):
+        gateway.add_lineage(UP, DOWN, column_lineage=mapping)
+
+
 def test_add_term_records(gateway: FakeGateway):
     gateway.add_term(DOWN, "customer_email", "urn:li:glossaryTerm:pii.email")
     assert ("TERM", DOWN.urn, "customer_email", "urn:li:glossaryTerm:pii.email") in gateway.writes

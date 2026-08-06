@@ -277,8 +277,7 @@ async def run(args: argparse.Namespace) -> int:
     if args.comment_out:
         Path(args.comment_out).write_text(comment, encoding="utf-8")
     if args.notify_out:
-        payload = build_notify_payload(verdicts, pr=str(args.pr))
-        payload["decision"] = decision.value
+        payload = build_notify_payload(verdicts, pr=str(args.pr), decision=decision)
         payload["contract_evaluations"] = [
             evaluation
             for verdict, decision in zip(verdicts, table_decisions)
@@ -307,7 +306,11 @@ async def run(args: argparse.Namespace) -> int:
                 for why in _verdict_to_dict(verdict, table_decision)["why"]
             ],
             "column_suspects": sorted({s for v in verdicts for s in v.column_suspects}),
-            "notify": build_notify_payload(verdicts, pr=str(args.pr)),
+            "notify": build_notify_payload(
+                verdicts,
+                pr=str(args.pr),
+                decision=decision,
+            ),
         }
         out = Path(args.json)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -324,7 +327,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Trueline PR guard",
         epilog=(
-            "Workflow: seed_ml_tail → verify_graph → MCP up → run_local. "
+            "Workflow: seed_ml_tail -> verify_graph -> MCP up -> run_local. "
             "Empty lineage is never treated as silent success. "
             "--commit re-plans before write and implies post-write --verify."
         ),
