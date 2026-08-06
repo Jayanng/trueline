@@ -10,5 +10,17 @@
     "db": "order_entry",
     "schema": "",
     "table": "feature_order_risk"
+  },
+  "demo_repo/models/patient_labs.sql": {
+    "platform": "snowflake",
+    "db": "clinical",
+    "schema": "",
+    "table": "patient_labs"
+  },
+  "demo_repo/models/sepsis_features.sql": {
+    "platform": "snowflake",
+    "db": "clinical",
+    "schema": "",
+    "table": "sepsis_features"
   }
 }

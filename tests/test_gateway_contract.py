@@ -1,7 +1,15 @@
 import pytest
 
 from trueline.config import TableRef
-from tests.fakes import CUSTOMERS, FakeGateway, LINEAGE, TERMS
+from tests.fakes import (
+    CLINICAL_DEPLOY_URN,
+    CLINICAL_MODEL_URN,
+    CUSTOMERS,
+    FakeGateway,
+    LINEAGE,
+    PATIENT_LABS,
+    TERMS,
+)
 
 UP = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="ORDER_ITEMS")
 DOWN = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="FEATURE_ORDER_RISK")
@@ -33,6 +41,20 @@ def test_owners_and_environment(gateway: FakeGateway):
 def test_downstream_includes_deployment(gateway: FakeGateway):
     results = gateway.downstream(UP, max_hops=4)
     assert any(r.urn.endswith("fraud-scoring-endpoint,PROD)") for r in results)
+
+
+def test_patient_labs_path_reaches_owned_prod_sepsis_model_and_deployment(gateway: FakeGateway):
+    results = gateway.downstream(PATIENT_LABS, max_hops=4)
+    clinical_entities = {
+        result.urn
+        for result in results
+        if result.entity_type in {"mlmodel", "mlmodeldeployment"}
+    }
+
+    assert clinical_entities == {CLINICAL_MODEL_URN, CLINICAL_DEPLOY_URN}
+    assert gateway.owners(CLINICAL_MODEL_URN) == ["clinical-ml-oncall"]
+    assert gateway.environment(CLINICAL_MODEL_URN) == "PROD"
+    assert gateway.environment(CLINICAL_DEPLOY_URN) == "PROD"
 
 
 def test_column_terms(gateway: FakeGateway):
