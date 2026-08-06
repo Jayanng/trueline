@@ -4,6 +4,7 @@
 Usage examples:
   python scripts/run_local.py --pr 2847 --base main --head demo/pr-2847
   python scripts/run_local.py --pr 2847 --base main --head demo/pr-2847 --commit --verify
+  python scripts/run_local.py --pr 2847 --base main --head demo/pr-2847 --shadow
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from trueline.agent import Agent  # noqa: E402
-from trueline.comment import render_comment  # noqa: E402
+from trueline.comment import build_notify_payload, render_comment  # noqa: E402
 from trueline.config import Config, load_table_map  # noqa: E402
 from trueline.datahub_client import DataHubGateway  # noqa: E402
 from trueline.diff_parser import parse_diff  # noqa: E402
@@ -41,6 +42,17 @@ def _verdict_to_dict(v) -> dict:
             for a in v.affected
         ],
         "message": v.message,
+        "why": [
+            {
+                "rule": w.rule,
+                "urn": w.urn,
+                "kind": w.kind,
+                "hops": w.hops,
+                "detail": w.detail,
+            }
+            for w in v.why
+        ],
+        "column_suspects": list(v.column_suspects),
     }
 
 
@@ -68,8 +80,8 @@ def git_show(repo: Path, rev: str, path: str) -> str:
 
 async def run(args: argparse.Namespace) -> int:
     cfg = Config()
-    # --commit only applies when dry-run is off (env TRUELINE_DRY_RUN=false)
     do_commit = bool(args.commit) and not cfg.dry_run
+    shadow = bool(args.shadow)
     repo = Path(args.repo)
     table_map_path = Path(args.table_map)
     if not table_map_path.is_file():
@@ -94,7 +106,6 @@ async def run(args: argparse.Namespace) -> int:
         if ref is None:
             print(f"SKIP (unmapped): {file.file_path}")
             continue
-        # Use PR head SQL so write-back planning reflects the change under review.
         sql = git_show(repo, args.head, file.file_path)
         results = gateway.downstream(ref, max_hops=4)
         owners = {r.urn: gateway.owners(r.urn) for r in results}
@@ -107,8 +118,9 @@ async def run(args: argparse.Namespace) -> int:
 
     for v in verdicts:
         print(f"{v.ref.table}: {v.severity} — {v.message}")
+        if v.column_suspects:
+            print(f"  column_suspects: {', '.join(v.column_suspects)}")
 
-    # Best-effort stamp: every gated dataset was reviewed by Trueline on this PR.
     for v in verdicts:
         try:
             gateway.stamp_reviewed(v.ref.urn, pr=str(args.pr))
@@ -140,7 +152,6 @@ async def run(args: argparse.Namespace) -> int:
             print(f"VERIFY FAILED: {remaining} missing edge(s) remain")
             return 2
 
-    # Already inside asyncio.run — await directly (do not open a nested loop).
     summary = await agent.summarize(
         {
             "verdicts": [_verdict_to_dict(v) for v in verdicts],
@@ -153,11 +164,18 @@ async def run(args: argparse.Namespace) -> int:
         dry_run=not do_commit,
         author=args.author,
         summary=summary,
+        shadow=shadow,
     )
     print(comment)
 
     if args.comment_out:
         Path(args.comment_out).write_text(comment, encoding="utf-8")
+    if args.notify_out:
+        payload = build_notify_payload(verdicts, pr=str(args.pr))
+        out = Path(args.notify_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"wrote notify payload → {out}")
     if args.json:
         worst = max((v.severity for v in verdicts), default="PASS")
         payload = {
@@ -165,13 +183,21 @@ async def run(args: argparse.Namespace) -> int:
             "tables": [_verdict_to_dict(v) for v in verdicts],
             "proposals": [p.__dict__ for p in proposals],
             "dry_run": not do_commit,
+            "shadow": shadow,
+            "why": [w for v in verdicts for w in _verdict_to_dict(v)["why"]],
+            "column_suspects": sorted({s for v in verdicts for s in v.column_suspects}),
+            "notify": build_notify_payload(verdicts, pr=str(args.pr)),
         }
         out = Path(args.json)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     worst = max((v.severity for v in verdicts), default="LOW")
-    return SEVERITY_EXIT.get(worst, 0)
+    code = SEVERITY_EXIT.get(worst, 0)
+    if shadow and code == 1:
+        print(f"SHADOW: would block ({worst}) but exiting 0")
+        return 0
+    return code
 
 
 def main() -> int:
@@ -184,8 +210,18 @@ def main() -> int:
     parser.add_argument("--table-map", default=str(ROOT / "demo_repo" / "table_map.json"))
     parser.add_argument("--commit", action="store_true", help="apply write-backs (post-merge only)")
     parser.add_argument("--verify", action="store_true", help="re-query graph after commit")
+    parser.add_argument(
+        "--shadow",
+        action="store_true",
+        help="comment CRITICAL/HIGH but exit 0 (brownfield adoption)",
+    )
     parser.add_argument("--json", default=None, help="write machine-readable verdict to path")
     parser.add_argument("--comment-out", default=None, help="write PR comment markdown to path")
+    parser.add_argument(
+        "--notify-out",
+        default=None,
+        help="write dry-run on-call notify payload JSON (owners from graph)",
+    )
     args = parser.parse_args()
     try:
         return asyncio.run(run(args))

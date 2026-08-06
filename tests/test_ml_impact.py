@@ -27,6 +27,8 @@ def test_find_ml_impacts_orders_by_hops_and_dedupes():
     assert impacts[0].owner == "datahub"
     assert impacts[0].env == "PROD"
     assert impacts[0].display() == "fraud_model_v4 [MLMODEL] [PROD] owner: @datahub"
+    # Sorted by -hops before dedupe → keep the deepest observation (5).
+    assert impacts[0].hops == 5
 
 
 def test_no_ml_no_impacts():

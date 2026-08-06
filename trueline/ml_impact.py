@@ -29,6 +29,7 @@ class MLImpact:
     env: str
     owner: str | None
     path: tuple[str, ...]
+    hops: int = 1
 
     def display(self) -> str:
         parts = [f"{self.name} [{self.kind}]"]
@@ -63,5 +64,6 @@ def find_ml_impacts(
             env=env_by_urn.get(r.urn, ""),
             owner=owners[0] if owners else None,
             path=path,
+            hops=int(r.hops or 1),
         )
     return list(seen.values())

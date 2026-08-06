@@ -1,4 +1,4 @@
-from trueline.comment import render_comment
+from trueline.comment import build_notify_payload, render_blast_radius, render_comment
 from trueline.config import TableRef
 from trueline.diff_parser import ChangedColumn, ChangeKind
 from trueline.impact import AffectedEntity, TableVerdict
@@ -14,10 +14,30 @@ def _verdict():
         columns=(ChangedColumn("return_date", ChangeKind.DROP),),
         severity="CRITICAL",
         affected=(
-            AffectedEntity("urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)", "fraud_model_v4", "MLMODEL",
-                           "datahub", "downstream ML entity"),
+            AffectedEntity(
+                "urn:li:mlFeature:(order_entry,feature_order_risk)",
+                "feature_order_risk",
+                "MLFEATURE",
+                None,
+                "downstream MLFEATURE",
+            ),
+            AffectedEntity(
+                "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)",
+                "fraud_model_v4",
+                "MLMODEL",
+                "datahub",
+                "downstream MLMODEL",
+            ),
+            AffectedEntity(
+                "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,fraud-scoring-endpoint,PROD)",
+                "fraud-scoring-endpoint",
+                "MLMODELDEPLOYMENT",
+                None,
+                "downstream MLMODELDEPLOYMENT",
+            ),
         ),
-        message="silent prod-model breakage — downstream ML entity",
+        message="silent prod-model breakage — dropping return_date reaches fraud_model_v4 [PROD]",
+        column_suspects=("return_date",),
     )
 
 
@@ -35,3 +55,35 @@ def test_comment_lists_proposals_and_skips_in_commit_mode():
     assert "PROPOSED" in text
     assert "nothing was written" not in text.lower()
     assert "Write-back committed after merge" in text
+
+
+def test_blast_radius_mermaid():
+    text = render_blast_radius([_verdict()])
+    assert "```mermaid" in text
+    assert "flowchart LR" in text
+    assert "order_items" in text
+    assert "fraud_model_v4" in text
+    assert "fraud-scoring-endpoint" in text
+    assert "classDef broken" in text
+
+
+def test_comment_counterfactual_and_notify():
+    text = render_comment([_verdict()], [], dry_run=True)
+    assert "What if we merge?" in text
+    assert "fraud-scoring-endpoint" in text
+    assert "Notify (dry-run page-out)" in text
+    assert "cc @datahub" in text
+    assert "column_suspects" in text
+
+
+def test_notify_payload():
+    payload = build_notify_payload([_verdict()], pr="2847")
+    assert payload["severity"] == "CRITICAL"
+    assert "datahub" in payload["owners"]
+    assert "fraud-scoring-endpoint" in payload["deployments"]
+    assert "return_date" in payload["column_suspects"]
+
+
+def test_shadow_banner():
+    text = render_comment([_verdict()], [], dry_run=True, shadow=True)
+    assert "shadow mode" in text.lower()
