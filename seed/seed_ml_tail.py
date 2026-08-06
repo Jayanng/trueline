@@ -34,37 +34,41 @@ OWNER = "urn:li:corpuser:datahub"
 
 
 def main() -> None:
-    emitter = DatahubRestEmitter(gms_server=GMS_URL, token=GMS_TOKEN)
+    from datahub.emitter.mcp import MetadataChangeProposalWrapper
+    from datahub.metadata.schema_classes import (
+        MLFeaturePropertiesClass, MLModelGroupPropertiesClass,
+        MLModelPropertiesClass, OwnerClass, OwnershipClass, OwnershipTypeClass,
+    )
 
-    from datahub.metadata.schema_classes import MLFeaturePropertiesClass
+    emitter = DatahubRestEmitter(gms_server=GMS_URL, token=GMS_TOKEN)
 
     feature_props = MLFeaturePropertiesClass(
         description="Fraud risk score feature; downstream of order_items (demo tail).",
         dataType="DOUBLE",
         sources=[FEATURE_DATASET],
     )
-    emitter.emit_mcp("mlFeature", ML_FEATURE_URN, "mlFeatureProperties", feature_props)
+    mcp = MetadataChangeProposalWrapper(entityType="mlFeature", entityUrn=ML_FEATURE_URN, aspectName="mlFeatureProperties", aspect=feature_props)
+    emitter.emit_mcp(mcp)
     print(f"seeded MLFeature {ML_FEATURE_URN}")
-
-    from datahub.metadata.schema_classes import MLModelPropertiesClass, OwnerClass, OwnershipClass, OwnershipTypeClass
 
     model_props = MLModelPropertiesClass(
         description="Production fraud model (demo tail).",
         mlFeatures=[ML_FEATURE_URN],
         customProperties={"environment": "PROD"},
     )
-    emitter.emit_mcp("mlModel", ML_MODEL_URN, "mlModelProperties", model_props)
+    mcp = MetadataChangeProposalWrapper(entityType="mlModel", entityUrn=ML_MODEL_URN, aspectName="mlModelProperties", aspect=model_props)
+    emitter.emit_mcp(mcp)
     ownership = OwnershipClass(owners=[OwnerClass(owner=OWNER, type=OwnershipTypeClass.TECHNICAL_OWNER)])
-    emitter.emit_mcp("mlModel", ML_MODEL_URN, "ownership", ownership)
+    mcp = MetadataChangeProposalWrapper(entityType="mlModel", entityUrn=ML_MODEL_URN, aspectName="ownership", aspect=ownership)
+    emitter.emit_mcp(mcp)
     print(f"seeded MLModel {ML_MODEL_URN} (owner datahub, env PROD)")
-
-    from datahub.metadata.schema_classes import MLModelGroupPropertiesClass
 
     group_props = MLModelGroupPropertiesClass(
         description="Fraud scoring model group (demo tail).",
         name="fraud-scoring",
     )
-    emitter.emit_mcp("mlModelGroup", ML_GROUP_URN, "mlModelGroupProperties", group_props)
+    mcp = MetadataChangeProposalWrapper(entityType="mlModelGroup", entityUrn=ML_GROUP_URN, aspectName="mlModelGroupProperties", aspect=group_props)
+    emitter.emit_mcp(mcp)
     print(f"seeded MLModelGroup {ML_GROUP_URN}")
 
     client = DataHubClient(server=GMS_URL, token=GMS_TOKEN)
