@@ -1,0 +1,67 @@
+name: trueline-guard
+
+on:
+  pull_request:
+    paths: ["demo_repo/**", "**/*.sql"]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  guard:
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Run guard (dry-run)
+        id: guard
+        shell: pwsh
+        env:
+          DATAHUB_GMS_URL: ${{ secrets.DATAHUB_GMS_URL }}
+          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TRUELINE_DRY_RUN: "true"
+        run: |
+          $ErrorActionPreference = "Continue"
+          python scripts/run_local.py `
+            --repo . --base origin/main --head ${{ github.head_ref }} `
+            --pr ${{ github.event.pull_request.number }} `
+            --author "${{ github.event.pull_request.user.login }}" `
+            --json trueline-verdict.json --comment-out trueline-comment.md
+          $code = $LASTEXITCODE
+          if ($code -gt 1) { exit $code }
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file trueline-comment.md
+
+  writeback:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Apply write-backs (merge)
+        shell: pwsh
+        env:
+          DATAHUB_GMS_URL: ${{ secrets.DATAHUB_GMS_URL }}
+          DATAHUB_GMS_TOKEN: ${{ secrets.DATAHUB_GMS_TOKEN }}
+          TRUELINE_DRY_RUN: "false"
+        run: |
+          python scripts/run_local.py `
+            --repo . --base HEAD~1 --head HEAD --pr ${{ github.sha }} --commit --verify
