@@ -83,8 +83,7 @@ def main() -> None:
     client.lineage.add_lineage(
         upstream=DatasetUrn.from_string(ORDER_ITEMS),
         downstream=DatasetUrn.from_string(FEATURE_DATASET),
-        column_lineage=None,
-        emit_mode="SYNC_WAIT",
+        column_lineage=False,
     )
     print("seeded table-level lineage order_items -> feature_order_risk (column gap intentional)")
 
