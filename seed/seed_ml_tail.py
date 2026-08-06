@@ -41,7 +41,6 @@ def main() -> None:
     feature_props = MLFeaturePropertiesClass(
         description="Fraud risk score feature; downstream of order_items (demo tail).",
         dataType="DOUBLE",
-        featureNamespace="order_entry",
         sources=[FEATURE_DATASET],
     )
     emitter.emit_mcp("mlFeature", ML_FEATURE_URN, "mlFeatureProperties", feature_props)
@@ -63,7 +62,7 @@ def main() -> None:
 
     group_props = MLModelGroupPropertiesClass(
         description="Fraud scoring model group (demo tail).",
-        mlModels=[ML_MODEL_URN],
+        name="fraud-scoring",
     )
     emitter.emit_mcp("mlModelGroup", ML_GROUP_URN, "mlModelGroupProperties", group_props)
     print(f"seeded MLModelGroup {ML_GROUP_URN}")
