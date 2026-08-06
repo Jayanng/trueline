@@ -1,0 +1,17 @@
+{
+  "contracts": [
+    {
+      "id": "sepsis-risk-v3-prod",
+      "model_urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,sepsis_risk_v3,PROD)",
+      "deployment_urn": "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,icu-early-warning,PROD)",
+      "critical_inputs": [
+        {
+          "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,clinical.patient_labs,PROD)",
+          "column": "lactate_mmol_l",
+          "policy": "NO_DROP_OR_TYPE_CHANGE",
+          "semantic": "blood lactate in mmol/L"
+        }
+      ]
+    }
+  ]
+}
