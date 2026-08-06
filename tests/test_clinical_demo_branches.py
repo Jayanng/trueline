@@ -60,6 +60,22 @@ def _run_setup(repo, *args):
     )
 
 
+def _create_original_target_branches(repo):
+    model = repo / "demo_repo" / "models" / "patient_labs.sql"
+    originals = {}
+    for branch, marker in (
+        ("demo/sepsis-unsafe", "original unsafe branch"),
+        ("demo/sepsis-safe", "original safe branch"),
+    ):
+        _git(repo, "switch", "--create", branch, "main")
+        model.write_text(f"select '{marker}' as marker\n", encoding="utf-8")
+        _git(repo, "add", "demo_repo/models/patient_labs.sql")
+        _git(repo, "commit", "-m", marker)
+        originals[branch] = _git(repo, "rev-parse", branch).stdout.strip()
+        _git(repo, "switch", "main")
+    return originals
+
+
 @pytest.mark.parametrize("starting_branch", ["demo/sepsis-unsafe", "demo/sepsis-safe"])
 @pytest.mark.skipif(
     shutil.which("powershell.exe") is None,
@@ -114,31 +130,39 @@ def test_rendered_quarantine_reason_names_missing_deployment_urn():
     assert reason in rendered
 
 
+@pytest.mark.parametrize("starting_branch", ["demo/sepsis-unsafe", "demo/sepsis-safe"])
+@pytest.mark.parametrize("failure_point", ["after_stage", "after_commit"])
 @pytest.mark.skipif(
     shutil.which("powershell.exe") is None,
     reason="Windows PowerShell is unavailable",
 )
-def test_setup_failure_restores_branch_and_cleans_only_target_file(tmp_path):
+def test_force_failure_restores_original_target_refs_and_starting_branch(
+    tmp_path,
+    starting_branch,
+    failure_point,
+):
     repo = _make_demo_repo(tmp_path)
     script = repo / "scripts" / SCRIPT.name
-    script.write_text(script.read_text(encoding="utf-8").replace(
-        'Invoke-Git add -- $modelPath',
-        'Invoke-Git add -- $modelPath\n        throw "intentional test failure"',
-    ), encoding="utf-8")
+    needle = {
+        "after_stage": "Invoke-Git add -- $modelPath",
+        "after_commit": "Invoke-Git commit -m $branch.Message",
+    }[failure_point]
+    script.write_text(
+        script.read_text(encoding="utf-8").replace(
+            needle,
+            f'{needle}\n        throw "intentional {failure_point} failure"',
+        ),
+        encoding="utf-8",
+    )
     _git(repo, "add", "scripts/setup_clinical_demo_branches.ps1")
     _git(repo, "commit", "-m", "inject setup failure")
+    originals = _create_original_target_branches(repo)
+    _git(repo, "switch", starting_branch)
 
-    result = _run_setup(repo, "-Base", "main")
+    result = _run_setup(repo, "-Base", "main", "-Force")
 
     assert result.returncode != 0
-    assert _git(repo, "branch", "--show-current").stdout.strip() == "main"
+    assert _git(repo, "branch", "--show-current").stdout.strip() == starting_branch
     assert _git(repo, "status", "--porcelain").stdout == ""
-    incomplete = _git(
-        repo,
-        "show-ref",
-        "--verify",
-        "--quiet",
-        "refs/heads/demo/sepsis-unsafe",
-        check=False,
-    )
-    assert incomplete.returncode != 0
+    for branch, original_sha in originals.items():
+        assert _git(repo, "rev-parse", branch).stdout.strip() == original_sha
