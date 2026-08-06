@@ -1,9 +1,9 @@
 from trueline.datahub_client import LineageResult
 from trueline.ml_impact import MLImpact, find_ml_impacts, ml_kind
 
-MODEL = "urn:li:mlModel:fraud_model_v4"
+MODEL = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
 FEATURE = "urn:li:mlFeature:(order_entry,feature_order_risk)"
-GROUP = "urn:li:mlModelGroup:fraud-scoring"
+GROUP = "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,fraud-scoring,PROD)"
 DATASET = "urn:li:dataset:(urn:li:dataPlatform:snowflake,ORDER_ENTRY_DB.ORDER_ENTRY.ORDER_ITEMS,PROD)"
 
 

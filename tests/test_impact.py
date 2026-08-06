@@ -4,7 +4,7 @@ from trueline.diff_parser import ChangedColumn, ChangedFile, ChangeKind
 from trueline.impact import compute_verdict
 
 REF = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="ORDER_ITEMS")
-MODEL = "urn:li:mlModel:fraud_model_v4"
+MODEL = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
 MLFEATURE = "urn:li:mlFeature:(order_entry,feature_order_risk)"
 LOOKER = "urn:li:dataset:(urn:li:dataPlatform:looker,analytics.dashboard_x,PROD)"
 DS2 = "urn:li:dataset:(urn:li:dataPlatform:snowflake,ORDER_ENTRY_DB.ORDER_ENTRY.FCT_SALES,PROD)"

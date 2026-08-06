@@ -14,7 +14,7 @@ def gateway():
 
 def test_downstream_returns_results(gateway: FakeGateway):
     results = gateway.downstream(UP, max_hops=4)
-    assert any(r.urn == "urn:li:mlModel:fraud_model_v4" for r in results)
+    assert any(r.urn == "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)" for r in results)
 
 
 def test_downstream_column_filter(gateway: FakeGateway):
@@ -22,8 +22,9 @@ def test_downstream_column_filter(gateway: FakeGateway):
 
 
 def test_owners_and_environment(gateway: FakeGateway):
-    assert gateway.owners("urn:li:mlModel:fraud_model_v4") == ["riya"]
-    assert gateway.environment("urn:li:mlModel:fraud_model_v4") == "PROD"
+    model = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
+    assert gateway.owners(model) == ["riya"]
+    assert gateway.environment(model) == "PROD"
     assert gateway.environment("urn:li:dataset:(urn:li:dataPlatform:looker,foo,PROD)") == ""
 
 

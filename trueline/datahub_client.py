@@ -21,6 +21,9 @@ _ML_URN_PREFIXES = (
     "urn:li:mlModelDeployment:",
 )
 
+# mcp-server-datahub get_lineage returns empty when max_hops > 2 on current Core.
+_MCP_MAX_HOPS = 2
+
 
 @dataclass(frozen=True)
 class LineageResult:
@@ -79,35 +82,82 @@ def _entity_type_from_urn(urn: str) -> str:
 
 
 def _name_from_urn(urn: str) -> str:
-    if "," in urn:
-        # urn:li:mlFeature:(ns,name) or dataset with qualified name
-        inner = urn.rsplit(":", 1)[-1]
-        if inner.startswith("(") and inner.endswith(")"):
-            parts = inner[1:-1].split(",")
+    """Best-effort display name from a DataHub URN."""
+    if "(" in urn and urn.endswith(")"):
+        inner = urn[urn.index("(") + 1 : -1]
+        # mlModel / mlModelGroup: (platformUrn, name, env)
+        if urn.startswith("urn:li:mlModel:") or urn.startswith("urn:li:mlModelGroup:"):
+            parts = inner.split(",")
+            if len(parts) >= 2:
+                return parts[1]
+        # mlFeature: (namespace, name)
+        if urn.startswith("urn:li:mlFeature:"):
+            parts = inner.split(",")
             return parts[-1] if parts else urn
+        # dataset: (platformUrn, qualifiedName, env)
+        if urn.startswith("urn:li:dataset:"):
+            parts = inner.split(",")
+            if len(parts) >= 2:
+                return parts[1].rsplit(".", 1)[-1]
     return urn.rsplit(":", 1)[-1]
 
 
-def _as_list(data: Any) -> list:
+def _flatten_search_results(data: Any) -> list[dict]:
+    """Normalize MCP search / lineage payloads into a list of entity-ish dicts.
+
+    Live mcp-server-datahub shapes observed:
+      search:     { searchResults: [ { entity: { urn, type, ... } }, ... ], total }
+      get_lineage:{ downstreams|upstreams: { searchResults: [ { entity, degree } ], total } }
+    """
     if data is None:
         return []
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in ("entities", "results", "lineage", "items"):
-            if isinstance(data.get(key), list):
-                return data[key]
-        # single entity payload
-        if "urn" in data:
-            return [data]
+        return [x for x in data if isinstance(x, dict)]
+    if not isinstance(data, dict):
+        return []
+
+    # Direct searchResults (search tool)
+    if isinstance(data.get("searchResults"), list):
+        return _rows_from_search_results(data["searchResults"])
+
+    # Nested under downstreams / upstreams (get_lineage)
+    for key in ("downstreams", "upstreams"):
+        block = data.get(key)
+        if isinstance(block, dict) and isinstance(block.get("searchResults"), list):
+            return _rows_from_search_results(block["searchResults"])
+
+    # Older / alternate shapes
+    for key in ("entities", "results", "lineage", "items"):
+        if isinstance(data.get(key), list):
+            return [x for x in data[key] if isinstance(x, dict)]
+
+    if "urn" in data:
+        return [data]
     return []
 
 
+def _rows_from_search_results(rows: list) -> list[dict]:
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ent = row.get("entity") if isinstance(row.get("entity"), dict) else row
+        if not isinstance(ent, dict):
+            continue
+        # Promote degree/hops onto the entity dict for lineage parsing.
+        merged = dict(ent)
+        if "degree" in row and "hops" not in merged and "degree" not in merged:
+            merged["degree"] = row["degree"]
+        if "hops" in row and "hops" not in merged:
+            merged["hops"] = row["hops"]
+        out.append(merged)
+    return out
+
+
 class DataHubGateway:
-    """Reads via MCP server, writes via SDK.
+    """Reads via MCP + SDK (live catalog only), writes via SDK.
 
     MCP server must be running at cfg.mcp_url (started as a sidecar).
-    The SDK client is used for writes only (add_lineage, add_term).
     """
 
     def __init__(self, cfg: Config):
@@ -120,6 +170,13 @@ class DataHubGateway:
         if isinstance(result, dict) and result.get("error"):
             return {"error": result["error"], "text": str(result["error"])}
         if "result" in result and result["result"]:
+            # Prefer structuredContent when present (same data, already parsed).
+            structured = result["result"].get("structuredContent")
+            if structured is not None and structured != {}:
+                # Some tools wrap under {"result": ...}
+                if isinstance(structured, dict) and "result" in structured and len(structured) == 1:
+                    return structured["result"]
+                return structured
             content = result["result"].get("content") or []
             if content:
                 text = content[0].get("text", "{}")
@@ -132,27 +189,24 @@ class DataHubGateway:
         return {}
 
     def search(self, query: str, entity_type: str = "dataset", limit: int = 20) -> list[str]:
-        data = self._mcp("search", {"query": query})
-        entities = _as_list(data)
+        data = self._mcp("search", {"query": query, "num_results": min(limit, 50)})
+        rows = _flatten_search_results(data)
         out: list[str] = []
         type_filter = (entity_type or "").lower()
-        for e in entities:
-            if not isinstance(e, dict):
-                continue
+        for e in rows:
             urn = e.get("urn", "")
             if not urn:
                 continue
             etype = str(e.get("type", e.get("entityType", ""))).lower()
             if type_filter:
-                # Match MCP type, URN family, or broad "ml" → any ML entity prefix.
                 if type_filter == "ml":
                     if not urn.startswith(_ML_URN_PREFIXES):
                         continue
+                elif type_filter == "dataset":
+                    if not urn.startswith("urn:li:dataset:"):
+                        continue
                 elif type_filter not in etype and type_filter not in urn.lower():
-                    if type_filter == "dataset" and not urn.startswith("urn:li:dataset:"):
-                        continue
-                    if type_filter != "dataset":
-                        continue
+                    continue
             out.append(urn)
             if len(out) >= limit:
                 break
@@ -160,9 +214,16 @@ class DataHubGateway:
 
     def entity(self, urn: str) -> dict:
         data = self._mcp("get_entities", {"urns": [urn]})
-        entities = _as_list(data)
-        if entities and isinstance(entities[0], dict):
-            return entities[0]
+        rows = _flatten_search_results(data) if not isinstance(data, list) else [
+            x for x in data if isinstance(x, dict)
+        ]
+        if rows:
+            # Prefer exact urn match when multiple returned.
+            for r in rows:
+                if r.get("urn") == urn and "error" not in r:
+                    return r
+            if "error" not in rows[0]:
+                return rows[0]
         if isinstance(data, dict) and urn in data:
             ent = data[urn]
             return ent if isinstance(ent, dict) else {"urn": urn, "raw": ent}
@@ -170,15 +231,22 @@ class DataHubGateway:
 
     def owners(self, urn: str) -> list[str]:
         ent = self.entity(urn)
-        owners_list = ent.get("owners") or ent.get("ownership", {}).get("owners") or []
+        owners_list = (
+            ent.get("owners")
+            or (ent.get("ownership") or {}).get("owners")
+            or (ent.get("properties") or {}).get("owners")
+            or []
+        )
         names: set[str] = set()
         for o in owners_list:
-            if not isinstance(o, dict):
+            if isinstance(o, str):
+                owner = o
+            elif isinstance(o, dict):
+                owner = o.get("owner") or o.get("urn") or ""
+            else:
                 continue
-            owner = o.get("owner") or o.get("urn") or ""
             if not owner:
                 continue
-            # Prefer bare username: urn:li:corpuser:datahub → datahub
             if owner.startswith("urn:li:corpuser:"):
                 names.add(owner.split(":")[-1])
             else:
@@ -190,7 +258,6 @@ class DataHubGateway:
         props = ent.get("customProperties") or {}
         if isinstance(props, dict) and props.get("environment"):
             return str(props["environment"])
-        # MCP may nest under properties / mlModelProperties
         for key in ("properties", "mlModelProperties", "datasetProperties"):
             nested = ent.get(key) or {}
             if isinstance(nested, dict):
@@ -200,25 +267,26 @@ class DataHubGateway:
         return ""
 
     def downstream(self, ref: TableRef, column: str | None = None, max_hops: int = 4) -> list[LineageResult]:
-        """Walk real downstream lineage from DataHub.
+        """Walk real downstream lineage from the live DataHub catalog.
 
-        1. MCP ``get_lineage`` (upstream=False = downstream)
-        2. SDK ``lineage.get_lineage`` (same graph, different client)
-        3. Aspect expansion for ML edges that live on entity aspects
-           (``MLFeature.sources``, ``MLModel.mlFeatures``, ``MLModel.groups``)
-           — only when those fields actually reference the source. No invented links.
+        Prefer the Python SDK (reliable multi-hop). Also query MCP get_lineage
+        (upstream=False) with hops capped at 2 — higher values return empty on
+        current mcp-server-datahub/Core. Expand ML aspect edges only when the
+        live entity aspects declare them (sources / mlFeatures / groups).
         """
-        # mcp-server-datahub get_lineage uses upstream:bool (not direction=DOWNSTREAM).
+        out = self._sdk_downstream(ref, column=column, max_hops=max_hops)
+
+        mcp_hops = min(max_hops, _MCP_MAX_HOPS)
         args: dict[str, Any] = {
             "urn": ref.urn,
             "upstream": False,
-            "max_hops": max_hops,
+            "max_hops": mcp_hops,
+            "max_results": 50,
         }
         if column:
             args["column"] = column
         data = self._mcp("get_lineage", args)
-        out = self._parse_lineage_entities(_as_list(data))
-        out = self._merge_lineage(out, self._sdk_downstream(ref, column=column, max_hops=max_hops))
+        out = self._merge_lineage(out, self._parse_lineage_entities(_flatten_search_results(data)))
 
         # Expand ML from the source and every real downstream dataset hop.
         bases = [ref.urn] + [r.urn for r in out if r.urn.startswith("urn:li:dataset:")]
@@ -232,7 +300,6 @@ class DataHubGateway:
     def _sdk_downstream(
         self, ref: TableRef, column: str | None = None, max_hops: int = 4
     ) -> list[LineageResult]:
-        """Secondary read path: same live graph via Python SDK."""
         try:
             kwargs: dict[str, Any] = {
                 "source_urn": DatasetUrn.from_string(ref.urn),
@@ -256,8 +323,11 @@ class DataHubGateway:
                     path_tuples.append(tuple(str(x) for x in p))
             out.append(LineageResult(
                 urn=urn,
-                entity_type=str(getattr(r, "type", None) or getattr(r, "entity_type", None)
-                                or _entity_type_from_urn(urn)).lower(),
+                entity_type=str(
+                    getattr(r, "type", None)
+                    or getattr(r, "entity_type", None)
+                    or _entity_type_from_urn(urn)
+                ).lower(),
                 platform=str(getattr(r, "platform", "") or ""),
                 name=str(getattr(r, "name", None) or _name_from_urn(urn)),
                 hops=int(getattr(r, "hops", 1) or 1),
@@ -286,8 +356,11 @@ class DataHubGateway:
                         paths.append(tuple(str(x) for x in p["path"]))
             out.append(LineageResult(
                 urn=urn,
-                entity_type=str(e.get("type", e.get("entityType", _entity_type_from_urn(urn)))).lower(),
-                platform=str(e.get("platform", "")),
+                entity_type=str(
+                    e.get("type", e.get("entityType", _entity_type_from_urn(urn)))
+                ).lower(),
+                platform=str(e.get("platform", "") if not isinstance(e.get("platform"), dict)
+                             else e.get("platform", {}).get("name", "")),
                 name=str(e.get("name", _name_from_urn(urn))),
                 hops=hops,
                 paths=tuple(paths),
@@ -309,19 +382,9 @@ class DataHubGateway:
         known: list[LineageResult],
         max_hops: int = 4,
     ) -> list[LineageResult]:
-        """Follow real ML aspect links from a dataset URN.
-
-        Only emits an edge when the live entity aspect says so:
-        - MLFeature.sources contains this dataset
-        - MLModel.mlFeatures contains that feature
-        - MLModel.groups lists a model group
-
-        Candidates come from lineage already returned + catalog search using
-        names derived from the source URN (never fixed demo identifiers).
-        """
+        """Follow real ML aspect links declared on live entities only."""
         out: list[LineageResult] = []
         candidates = [r.urn for r in known]
-        # Table short-name from the dataset URN — legitimate query, not a constant.
         short = _dataset_short_name(source_urn)
         queries = [q for q in (short, "*") if q]
         for q in queries:
@@ -337,7 +400,7 @@ class DataHubGateway:
                 continue
             sources = self._extract_urn_list(self.entity(urn), ("sources",))
             if source_urn not in sources:
-                continue  # no invented link
+                continue
             feature_urns.append(urn)
             out.append(LineageResult(
                 urn=urn,
@@ -362,10 +425,12 @@ class DataHubGateway:
             if not m_urn.startswith("urn:li:mlModel:"):
                 continue
             ent = self.entity(m_urn)
+            if ent.get("error"):
+                continue
             model_features = self._extract_urn_list(ent, ("mlFeatures", "features"))
             linked = [f for f in feature_urns if f in model_features]
             if not linked:
-                continue  # only models that actually declare the feature
+                continue
             f0 = linked[0]
             out.append(LineageResult(
                 urn=m_urn,
@@ -442,16 +507,14 @@ class DataHubGateway:
 
 
 def _dataset_short_name(urn: str) -> str:
-    """Extract the table/entity short name from a dataset URN (last dotted segment)."""
+    """Extract the table short name from a dataset URN (last dotted segment)."""
     if not urn.startswith("urn:li:dataset:"):
         return _name_from_urn(urn)
-    # urn:li:dataset:(urn:li:dataPlatform:snowflake,db.schema.table,PROD)
     try:
-        inner = urn[len("urn:li:dataset:("):-1] if urn.endswith(")") else urn
+        inner = urn[len("urn:li:dataset:(") : -1] if urn.endswith(")") else urn
         parts = inner.split(",")
         if len(parts) >= 2:
-            qualified = parts[1]
-            return qualified.rsplit(".", 1)[-1]
+            return parts[1].rsplit(".", 1)[-1]
     except Exception:
         pass
     return _name_from_urn(urn)

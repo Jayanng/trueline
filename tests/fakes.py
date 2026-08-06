@@ -10,8 +10,8 @@ FEATURE = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTR
 CUSTOMERS = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="customers")
 
 ML_FEATURE_URN = "urn:li:mlFeature:(order_entry,feature_order_risk)"
-ML_MODEL_URN = "urn:li:mlModel:fraud_model_v4"
-ML_GROUP_URN = "urn:li:mlModelGroup:fraud-scoring"
+ML_MODEL_URN = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
+ML_GROUP_URN = "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,fraud-scoring,PROD)"
 
 LINEAGE = {
     ORDER_ITEMS.urn: [

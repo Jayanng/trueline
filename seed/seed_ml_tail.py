@@ -16,7 +16,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
-from datahub.emitter.mce_builder import make_dataset_urn
+from datahub.emitter.mce_builder import (
+    make_dataset_urn,
+    make_ml_model_group_urn,
+    make_ml_model_urn,
+)
 from datahub.emitter.rest_emitter import DatahubRestEmitter
 from datahub.metadata.schema_classes import (
     GenericAspectClass, MetadataChangeProposalClass,
@@ -32,8 +36,9 @@ GMS_TOKEN = os.getenv("DATAHUB_GMS_TOKEN", "")
 FEATURE_DATASET = make_dataset_urn(platform="snowflake", name="order_entry.feature_order_risk", env="PROD")
 ORDER_ITEMS = make_dataset_urn(platform="snowflake", name="order_entry.order_items", env="PROD")
 ML_FEATURE_URN = "urn:li:mlFeature:(order_entry,feature_order_risk)"
-ML_MODEL_URN = "urn:li:mlModel:fraud_model_v4"
-ML_GROUP_URN = "urn:li:mlModelGroup:fraud-scoring"
+# Canonical DataHub ML URNs are 3-part: (platform, name, env)
+ML_MODEL_URN = make_ml_model_urn(model_name="fraud_model_v4", platform="mlflow", env="PROD")
+ML_GROUP_URN = make_ml_model_group_urn(group_name="fraud-scoring", platform="mlflow", env="PROD")
 OWNER = "urn:li:corpuser:datahub"
 
 

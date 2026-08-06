@@ -14,7 +14,7 @@ def _verdict():
         columns=(ChangedColumn("return_date", ChangeKind.DROP),),
         severity="CRITICAL",
         affected=(
-            AffectedEntity("urn:li:mlModel:fraud_model_v4", "fraud_model_v4", "MLMODEL",
+            AffectedEntity("urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)", "fraud_model_v4", "MLMODEL",
                            "riya", "downstream ML entity"),
         ),
         message="silent prod-model breakage — downstream ML entity",
