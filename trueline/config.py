@@ -25,7 +25,8 @@ class TableRef:
 
     @property
     def qualified(self) -> str:
-        return f"{self.db}.{self.schema}.{self.table}"
+        # Skip empty segments so schema="" yields "db.table", not "db..table".
+        return ".".join(p for p in (self.db, self.schema, self.table) if p)
 
     @property
     def urn(self) -> str:
@@ -40,6 +41,9 @@ def parse_dataset_urn(urn: str) -> TableRef:
     parts = qualified.split(".")
     if len(parts) == 3:
         db, schema, table = parts
+    elif len(parts) == 2:
+        db, table = parts
+        schema = ""
     else:
         db, schema, table = "", "", qualified
     return TableRef(platform=platform, db=db, schema=schema, table=table, env=env)

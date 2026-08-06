@@ -12,9 +12,20 @@ def test_table_ref_urn():
     assert ref.urn == "urn:li:dataset:(urn:li:dataPlatform:snowflake,ORDER_ENTRY_DB.ORDER_ENTRY.ORDER_ITEMS,PROD)"
 
 
+def test_table_ref_empty_schema_no_double_dot():
+    ref = TableRef(platform="snowflake", db="order_entry", schema="", table="feature_order_risk")
+    assert ref.qualified == "order_entry.feature_order_risk"
+    assert ref.urn == (
+        "urn:li:dataset:(urn:li:dataPlatform:snowflake,order_entry.feature_order_risk,PROD)"
+    )
+    assert ".." not in ref.qualified
+
+
 def test_parse_dataset_urn_roundtrip():
     ref = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="ORDER_ITEMS")
     assert parse_dataset_urn(ref.urn) == ref
+    two_part = TableRef(platform="snowflake", db="order_entry", schema="", table="feature_order_risk")
+    assert parse_dataset_urn(two_part.urn) == two_part
 
 
 def test_parse_dataset_urn_rejects_non_dataset():

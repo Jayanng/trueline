@@ -68,23 +68,25 @@ def main() -> None:
     }))
     print(f"seeded dataset {FEATURE_DATASET}")
 
-    # 1) MLFeature
+    # 1) MLFeature — sources=[FEATURE_DATASET] creates dataset→feature lineage
     emitter.emit_mcp(_mcp("mlFeature", ML_FEATURE_URN, "mlFeatureProperties", {
         "description": "Fraud risk score feature; downstream of order_items (demo tail).",
         "dataType": "CONTINUOUS",
+        "sources": [FEATURE_DATASET],
     }))
-    print(f"seeded MLFeature {ML_FEATURE_URN}")
+    print(f"seeded MLFeature {ML_FEATURE_URN} (sources={FEATURE_DATASET})")
 
-    # 2) MLModel with feature + owner + env
+    # 2) MLModel with feature + group + owner + env
     emitter.emit_mcp(_mcp("mlModel", ML_MODEL_URN, "mlModelProperties", {
         "description": "Production fraud model (demo tail).",
         "customProperties": {"environment": "PROD"},
         "mlFeatures": [ML_FEATURE_URN],
+        "groups": [ML_GROUP_URN],
     }))
     emitter.emit_mcp(_mcp("mlModel", ML_MODEL_URN, "ownership", {
         "owners": [{"owner": OWNER, "type": "TECHNICAL_OWNER"}],
     }))
-    print(f"seeded MLModel {ML_MODEL_URN} (owner datahub, env PROD)")
+    print(f"seeded MLModel {ML_MODEL_URN} (owner datahub, env PROD, group fraud-scoring)")
 
     # 3) MLModelGroup
     emitter.emit_mcp(_mcp("mlModelGroup", ML_GROUP_URN, "mlModelGroupProperties", {

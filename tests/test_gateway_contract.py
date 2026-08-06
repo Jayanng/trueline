@@ -1,7 +1,7 @@
 import pytest
 
 from trueline.config import TableRef
-from tests.fakes import FakeGateway, LINEAGE, TERMS
+from tests.fakes import CUSTOMERS, FakeGateway, LINEAGE, TERMS
 
 UP = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="ORDER_ITEMS")
 DOWN = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="FEATURE_ORDER_RISK")
@@ -28,8 +28,7 @@ def test_owners_and_environment(gateway: FakeGateway):
 
 
 def test_column_terms(gateway: FakeGateway):
-    cust = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="CUSTOMERS")
-    assert any("pii" in t.lower() for t in gateway.column_terms(cust, "cust_email"))
+    assert any("pii" in t.lower() for t in gateway.column_terms(CUSTOMERS, "cust_email"))
 
 
 def test_add_lineage_records(gateway: FakeGateway):

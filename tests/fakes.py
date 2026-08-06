@@ -7,7 +7,7 @@ from trueline.datahub_client import LineageResult
 
 ORDER_ITEMS = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="ORDER_ITEMS")
 FEATURE = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="FEATURE_ORDER_RISK")
-CUSTOMERS = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="CUSTOMERS")
+CUSTOMERS = TableRef(platform="snowflake", db="ORDER_ENTRY_DB", schema="ORDER_ENTRY", table="customers")
 
 ML_FEATURE_URN = "urn:li:mlFeature:(order_entry,feature_order_risk)"
 ML_MODEL_URN = "urn:li:mlModel:fraud_model_v4"
