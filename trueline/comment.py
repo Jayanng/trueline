@@ -51,11 +51,12 @@ def render_blast_radius(verdicts: list[TableVerdict]) -> str:
             return
         seen_nodes.add(nid)
         safe = label.replace('"', "'")
+        # Palette-locked (DESIGN.md §1.1b): lime = hot path, never a second hue.
         if broken:
             lines.append(f'  {nid}["{safe}"]:::broken')
             broken_ids.append(nid)
         else:
-            lines.append(f'  {nid}["{safe}"]')
+            lines.append(f'  {nid}["{safe}"]:::safe')
 
     for v in verdicts:
         src = _node_id(v.ref.table)
@@ -90,7 +91,11 @@ def render_blast_radius(verdicts: list[TableVerdict]) -> str:
                     lines.append(f"  {prev} --> {nid}")
             prev = nid
 
-    lines.append("  classDef broken fill:#3f1f1f,stroke:#ff4d4d,color:#fff")
+    # Tokens: --hot-node-* / --safe-node-* / --accent (#82C200) from DESIGN.md
+    lines.append(
+        "  classDef broken fill:#0A0A0A,stroke:#82C200,color:#FFFFFF,stroke-width:2px"
+    )
+    lines.append("  classDef safe fill:#000000,stroke:#404040,color:#A3A3A3")
     lines.append("```")
     lines.append("")
     return "\n".join(lines)

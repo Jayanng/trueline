@@ -65,6 +65,8 @@ def test_blast_radius_mermaid():
     assert "fraud_model_v4" in text
     assert "fraud-scoring-endpoint" in text
     assert "classDef broken" in text
+    assert "#82C200" in text  # brand lime, not a second alert hue
+    assert "classDef safe" in text
 
 
 def test_comment_counterfactual_and_notify():
