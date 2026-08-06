@@ -115,7 +115,8 @@ def test_demo_pr_commit_then_verify(e2e_enabled):
         text=True,
         env=env,
     )
-    assert "SKIPPED" in out2.stdout
+    assert out2.returncode == 0, out2.stdout + out2.stderr
+    assert "COMMITTED 0 write-back(s)" in out2.stdout
 
 
 def test_unsafe_clinical_branch_blocks_with_contract_evidence(e2e_enabled, tmp_path):
