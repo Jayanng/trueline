@@ -53,6 +53,21 @@ def _mcp(entity_type: str, entity_urn: str, aspect_name: str, aspect: dict) -> M
 def main() -> None:
     emitter = DatahubRestEmitter(gms_server=GMS_URL, token=GMS_TOKEN)
 
+    # 0) FEATURE_ORDER_RISK dataset (the feature's source table)
+    from datahub.metadata.schema_classes import (
+        DatasetPropertiesClass, SchemaFieldClass, SchemaMetadataClass, SchemaFieldDataTypeClass,
+    )
+
+    dataset_props = DatasetPropertiesClass(
+        description="Fraud risk feature dataset (demo tail).",
+        name="feature_order_risk",
+    )
+    emitter.emit_mcp(_mcp("dataset", FEATURE_DATASET, "datasetProperties", {
+        "description": "Fraud risk feature dataset (demo tail).",
+        "name": "feature_order_risk",
+    }))
+    print(f"seeded dataset {FEATURE_DATASET}")
+
     # 1) MLFeature
     emitter.emit_mcp(_mcp("mlFeature", ML_FEATURE_URN, "mlFeatureProperties", {
         "description": "Fraud risk score feature; downstream of order_items (demo tail).",
