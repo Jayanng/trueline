@@ -164,7 +164,11 @@ def render_notify(verdicts: list[TableVerdict]) -> str:
     return "\n".join(lines)
 
 
-def build_notify_payload(verdicts: list[TableVerdict], pr: str) -> dict:
+def build_notify_payload(
+    verdicts: list[TableVerdict],
+    pr: str,
+    decision: Decision | None = None,
+) -> dict:
     owners = sorted({a.owner for v in verdicts for a in v.affected if a.owner})
     worst = max(
         (v.severity for v in verdicts),
@@ -175,6 +179,7 @@ def build_notify_payload(verdicts: list[TableVerdict], pr: str) -> dict:
         "channel": "#ml-oncall",
         "text": f"Trueline {worst} on PR #{pr}",
         "severity": worst,
+        "decision": decision.value if decision else None,
         "pr": pr,
         "owners": owners,
         "mentions": [f"@{o}" for o in owners],
@@ -186,21 +191,47 @@ def build_notify_payload(verdicts: list[TableVerdict], pr: str) -> dict:
     }
 
 
-def render_contract_decisions(
-    verdicts: list[TableVerdict],
-    decision: Decision | None,
+def render_decision(
+    decision: Decision,
     table_decisions: list[TableDecision],
+    table_names: list[str] | None = None,
 ) -> str:
-    if decision is None:
-        return ""
-    lines = ["### Contract decision", "", f"- Overall: `{decision.value}`"]
-    for verdict, table_decision in zip(verdicts, table_decisions):
-        lines.append(f"- `{verdict.ref.table}`: `{table_decision.decision.value}`")
+    explanations = {
+        Decision.BLOCK: "A verified production model contract is violated. Merge must stop.",
+        Decision.QUARANTINE: (
+            "Safety cannot be proven because required catalog evidence is incomplete. "
+            "Review Catalog warnings below."
+        ),
+        Decision.REVIEW: (
+            "Downstream impact exists without a confirmed protected-input violation."
+        ),
+        Decision.ALLOW: (
+            "No protected-input contract is violated by the changed columns."
+        ),
+    }
+    lines = [
+        f"## CHANGE DECISION — {decision.value}",
+        "",
+        f"- Overall: `{decision.value}`",
+        "",
+        explanations[decision],
+        "",
+    ]
+    for index, table_decision in enumerate(table_decisions):
+        if table_names and index < len(table_names):
+            lines.append(f"- `{table_names[index]}`: `{table_decision.decision.value}`")
         for evaluation in table_decision.evaluations:
-            lines.append(
-                f"  - `{evaluation.contract_id}` / `{evaluation.column}`: "
-                f"`{evaluation.outcome}` - {evaluation.reason}"
-            )
+            lines += [
+                f"- **Contract:** `{evaluation.contract_id}`",
+                f"  - Column/change: `{evaluation.column}` / `{evaluation.change_kind.value}`",
+                f"  - Policy: `{evaluation.policy}`",
+                f"  - Outcome: `{evaluation.outcome}`",
+                f"  - Model URN: `{evaluation.model_urn}`",
+                f"  - Deployment URN: `{evaluation.deployment_urn}`",
+            ]
+            if evaluation.semantic:
+                lines.append(f"  - Semantic description: {evaluation.semantic}")
+            lines.append(f"  - Reason: {evaluation.reason}")
     lines.append("")
     return "\n".join(lines)
 
@@ -209,11 +240,13 @@ def render_comment(
     verdicts: list[TableVerdict],
     proposals: list[Proposal],
     dry_run: bool,
+    *,
+    decision: Decision,
+    table_decisions: list[TableDecision],
     author: str | None = None,
     summary: str | None = None,
     shadow: bool = False,
-    decision: Decision | None = None,
-    table_decisions: list[TableDecision] | None = None,
+    warnings: list | None = None,
 ) -> str:
     worst = max(verdicts, key=lambda v: _SEV_RANK[v.severity], default=None)
     head = "PASS" if worst is None else worst.severity
@@ -229,9 +262,7 @@ def render_comment(
     ]
     if summary:
         out += [summary, ""]
-    decision_block = render_contract_decisions(verdicts, decision, list(table_decisions or []))
-    if decision_block:
-        out.append(decision_block)
+    out.append(render_decision(decision, table_decisions, [v.ref.table for v in verdicts]))
     blast = render_blast_radius(verdicts)
     if blast:
         out.append(blast)

@@ -45,7 +45,14 @@ def _verdict():
 
 
 def test_comment_contains_verdict_and_owner():
-    text = render_comment([_verdict()], [], dry_run=True, author="maya")
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.ALLOW,
+        table_decisions=[],
+        author="maya",
+    )
     assert "Trueline verdict — CRITICAL" in text
     assert "fraud_model_v4" in text
     assert "owner: @datahub" in text
@@ -54,7 +61,13 @@ def test_comment_contains_verdict_and_owner():
 
 def test_comment_lists_proposals_and_skips_in_commit_mode():
     p = Proposal("LINEAGE", REF.urn, {"upstream": "u", "mapping": {"risk_score": ["order_total"]}}, "PR #2847")
-    text = render_comment([_verdict()], [p], dry_run=False)
+    text = render_comment(
+        [_verdict()],
+        [p],
+        dry_run=False,
+        decision=Decision.ALLOW,
+        table_decisions=[],
+    )
     assert "PROPOSED" in text
     assert "nothing was written" not in text.lower()
     assert "Write-back committed after merge" in text
@@ -73,7 +86,13 @@ def test_blast_radius_mermaid():
 
 
 def test_comment_counterfactual_and_notify():
-    text = render_comment([_verdict()], [], dry_run=True)
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.ALLOW,
+        table_decisions=[],
+    )
     assert "What if we merge?" in text
     assert "fraud-scoring-endpoint" in text
     assert "Notify (dry-run page-out)" in text
@@ -102,16 +121,16 @@ def test_notify_payload_uses_explicit_severity_order():
     assert payload["text"] == "Trueline CRITICAL on PR #2847"
 
 
-def test_comment_renders_contract_decision_without_summary():
+def test_comment_explains_block_decision_with_contract_evidence():
     evaluation = ContractEvaluation(
-        contract_id="fraud-risk-v4-prod",
-        column="return_date",
+        contract_id="sepsis-risk-v3-prod",
+        column="lactate_mmol_l",
         change_kind=ChangeKind.DROP,
         policy="NO_DROP_OR_TYPE_CHANGE",
         outcome="VIOLATED",
-        model_urn="urn:li:mlModel:fraud_model_v4",
-        deployment_urn="urn:li:mlModelDeployment:fraud-scoring-endpoint",
-        semantic="order return date",
+        model_urn="urn:li:mlModel:sepsis-risk-v3",
+        deployment_urn="urn:li:mlModelDeployment:icu-early-warning",
+        semantic="blood lactate in mmol/L",
         reason="DROP violates NO_DROP_OR_TYPE_CHANGE",
     )
     table_decision = TableDecision(Decision.BLOCK, (evaluation,), (evaluation.reason,))
@@ -124,14 +143,52 @@ def test_comment_renders_contract_decision_without_summary():
         table_decisions=[table_decision],
     )
 
-    assert "Contract decision" in text
-    assert "Overall: `BLOCK`" in text
-    assert "`order_items`: `BLOCK`" in text
-    assert "`fraud-risk-v4-prod`" in text
-    assert "`return_date`" in text
-    assert "`VIOLATED`" in text
+    assert "CHANGE DECISION — BLOCK" in text
+    assert "sepsis-risk-v3-prod" in text
+    assert "lactate_mmol_l" in text
+    assert "NO_DROP_OR_TYPE_CHANGE" in text
+    assert "icu-early-warning" in text
+    assert "blood lactate in mmol/L" in text
+
+
+def test_comment_explains_quarantine_and_renders_catalog_warnings():
+    evaluation = ContractEvaluation(
+        contract_id="sepsis-risk-v3-prod",
+        column="lactate_mmol_l",
+        change_kind=ChangeKind.DROP,
+        policy="NO_DROP_OR_TYPE_CHANGE",
+        outcome="UNVERIFIED",
+        model_urn="urn:li:mlModel:sepsis-risk-v3",
+        deployment_urn="urn:li:mlModelDeployment:icu-early-warning",
+        semantic="blood lactate in mmol/L",
+        reason="Lineage is unverified for protected input",
+    )
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.QUARANTINE,
+        table_decisions=[TableDecision(Decision.QUARANTINE, (evaluation,), (evaluation.reason,))],
+    )
+
+    assert "CHANGE DECISION — QUARANTINE" in text
+    assert "Safety cannot be proven" in text
+    assert "Catalog warnings" in text
+
+
+def test_notify_payload_includes_decision():
+    payload = build_notify_payload([_verdict()], pr="2847", decision=Decision.BLOCK)
+
+    assert payload["decision"] == "BLOCK"
 
 
 def test_shadow_banner():
-    text = render_comment([_verdict()], [], dry_run=True, shadow=True)
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.BLOCK,
+        table_decisions=[],
+        shadow=True,
+    )
     assert "shadow mode" in text.lower()
