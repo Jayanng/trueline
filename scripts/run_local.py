@@ -249,13 +249,14 @@ async def run(args: argparse.Namespace) -> int:
                 )
             return 2
 
+    decision = worst_decision(d.decision for d in table_decisions)
     summary = await agent.summarize(
         {
             "verdicts": [
                 _verdict_to_dict(verdict, decision)
                 for verdict, decision in zip(verdicts, table_decisions)
             ],
-            "decision": worst_decision(d.decision for d in table_decisions).value,
+            "decision": decision.value,
             "proposals": [p.__dict__ for p in proposals],
             "warnings": [w.to_dict() for w in warnings],
         }
@@ -268,6 +269,8 @@ async def run(args: argparse.Namespace) -> int:
         summary=summary,
         shadow=shadow,
         warnings=warnings,
+        decision=decision,
+        table_decisions=table_decisions,
     )
     print(comment)
 
@@ -275,7 +278,7 @@ async def run(args: argparse.Namespace) -> int:
         Path(args.comment_out).write_text(comment, encoding="utf-8")
     if args.notify_out:
         payload = build_notify_payload(verdicts, pr=str(args.pr))
-        payload["decision"] = worst_decision(d.decision for d in table_decisions).value
+        payload["decision"] = decision.value
         payload["contract_evaluations"] = [
             evaluation
             for verdict, decision in zip(verdicts, table_decisions)
@@ -287,7 +290,6 @@ async def run(args: argparse.Namespace) -> int:
         print(f"wrote notify payload → {out}")
     if args.json:
         worst = _worst_severity(v.severity for v in verdicts)
-        decision = worst_decision(d.decision for d in table_decisions)
         payload = {
             "verdict": worst,
             "decision": decision.value,
@@ -311,7 +313,6 @@ async def run(args: argparse.Namespace) -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    decision = worst_decision(d.decision for d in table_decisions)
     code = _decision_exit(decision, shadow)
     if shadow and decision in (Decision.BLOCK, Decision.QUARANTINE):
         print(f"SHADOW: would block ({decision.value}) but exiting 0")

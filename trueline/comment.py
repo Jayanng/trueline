@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from .decision import Decision, TableDecision
 from .impact import TableVerdict
 from .writeback import Proposal
 
@@ -165,7 +166,11 @@ def render_notify(verdicts: list[TableVerdict]) -> str:
 
 def build_notify_payload(verdicts: list[TableVerdict], pr: str) -> dict:
     owners = sorted({a.owner for v in verdicts for a in v.affected if a.owner})
-    worst = max((v.severity for v in verdicts), default="PASS")
+    worst = max(
+        (v.severity for v in verdicts),
+        key=_SEV_RANK.__getitem__,
+        default="PASS",
+    )
     return {
         "channel": "#ml-oncall",
         "text": f"Trueline {worst} on PR #{pr}",
@@ -181,6 +186,25 @@ def build_notify_payload(verdicts: list[TableVerdict], pr: str) -> dict:
     }
 
 
+def render_contract_decisions(
+    verdicts: list[TableVerdict],
+    decision: Decision | None,
+    table_decisions: list[TableDecision],
+) -> str:
+    if decision is None:
+        return ""
+    lines = ["### Contract decision", "", f"- Overall: `{decision.value}`"]
+    for verdict, table_decision in zip(verdicts, table_decisions):
+        lines.append(f"- `{verdict.ref.table}`: `{table_decision.decision.value}`")
+        for evaluation in table_decision.evaluations:
+            lines.append(
+                f"  - `{evaluation.contract_id}` / `{evaluation.column}`: "
+                f"`{evaluation.outcome}` - {evaluation.reason}"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_comment(
     verdicts: list[TableVerdict],
     proposals: list[Proposal],
@@ -188,6 +212,8 @@ def render_comment(
     author: str | None = None,
     summary: str | None = None,
     shadow: bool = False,
+    decision: Decision | None = None,
+    table_decisions: list[TableDecision] | None = None,
 ) -> str:
     worst = max(verdicts, key=lambda v: _SEV_RANK[v.severity], default=None)
     head = "PASS" if worst is None else worst.severity
@@ -203,6 +229,9 @@ def render_comment(
     ]
     if summary:
         out += [summary, ""]
+    decision_block = render_contract_decisions(verdicts, decision, list(table_decisions or []))
+    if decision_block:
+        out.append(decision_block)
     blast = render_blast_radius(verdicts)
     if blast:
         out.append(blast)

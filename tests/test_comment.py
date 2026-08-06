@@ -1,5 +1,8 @@
+from dataclasses import replace
+
 from trueline.comment import build_notify_payload, render_blast_radius, render_comment
 from trueline.config import TableRef
+from trueline.decision import ContractEvaluation, Decision, TableDecision
 from trueline.diff_parser import ChangedColumn, ChangeKind
 from trueline.impact import AffectedEntity, TableVerdict
 from trueline.writeback import Proposal
@@ -84,6 +87,49 @@ def test_notify_payload():
     assert "datahub" in payload["owners"]
     assert "fraud-scoring-endpoint" in payload["deployments"]
     assert "return_date" in payload["column_suspects"]
+
+
+def test_notify_payload_uses_explicit_severity_order():
+    payload = build_notify_payload(
+        [
+            replace(_verdict(), severity="LOW"),
+            replace(_verdict(), severity="CRITICAL"),
+            replace(_verdict(), severity="MEDIUM"),
+        ],
+        pr="2847",
+    )
+    assert payload["severity"] == "CRITICAL"
+    assert payload["text"] == "Trueline CRITICAL on PR #2847"
+
+
+def test_comment_renders_contract_decision_without_summary():
+    evaluation = ContractEvaluation(
+        contract_id="fraud-risk-v4-prod",
+        column="return_date",
+        change_kind=ChangeKind.DROP,
+        policy="NO_DROP_OR_TYPE_CHANGE",
+        outcome="VIOLATED",
+        model_urn="urn:li:mlModel:fraud_model_v4",
+        deployment_urn="urn:li:mlModelDeployment:fraud-scoring-endpoint",
+        semantic="order return date",
+        reason="DROP violates NO_DROP_OR_TYPE_CHANGE",
+    )
+    table_decision = TableDecision(Decision.BLOCK, (evaluation,), (evaluation.reason,))
+
+    text = render_comment(
+        [_verdict()],
+        [],
+        dry_run=True,
+        decision=Decision.BLOCK,
+        table_decisions=[table_decision],
+    )
+
+    assert "Contract decision" in text
+    assert "Overall: `BLOCK`" in text
+    assert "`order_items`: `BLOCK`" in text
+    assert "`fraud-risk-v4-prod`" in text
+    assert "`return_date`" in text
+    assert "`VIOLATED`" in text
 
 
 def test_shadow_banner():
