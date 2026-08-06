@@ -59,6 +59,50 @@ def test_load_contracts_rejects_malformed_contract(tmp_path, mutation):
         load_contracts(path)
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda p: p["contracts"][0].update({"id": 123}),
+        lambda p: p["contracts"][0].update({"model_urn": [MODEL]}),
+        lambda p: p["contracts"][0].update({"deployment_urn": {"urn": DEPLOYMENT}}),
+        lambda p: p["contracts"][0]["critical_inputs"][0].update({"dataset_urn": 123}),
+        lambda p: p["contracts"][0]["critical_inputs"][0].update({"column": ["lactate_mmol_l"]}),
+        lambda p: p["contracts"][0]["critical_inputs"][0].update(
+            {"policy": ["NO_DROP_OR_TYPE_CHANGE"]}
+        ),
+        lambda p: p["contracts"][0]["critical_inputs"][0].update({"semantic": 123}),
+    ],
+)
+def test_load_contracts_rejects_non_string_fields(tmp_path, mutation):
+    payload = _payload()
+    mutation(payload)
+    path = tmp_path / "contracts.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ContractError):
+        load_contracts(path)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda p: p.update({"owner": "urn:li:corpuser:clinical-ml"}),
+        lambda p: p["contracts"][0].update({"owner": "urn:li:corpuser:clinical-ml"}),
+        lambda p: p["contracts"][0]["critical_inputs"][0].update(
+            {"owner": "urn:li:corpuser:clinical-ml"}
+        ),
+    ],
+)
+def test_load_contracts_rejects_unknown_fields(tmp_path, mutation):
+    payload = _payload()
+    mutation(payload)
+    path = tmp_path / "contracts.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ContractError):
+        load_contracts(path)
+
+
 def test_matching_inputs_requires_exact_dataset_and_column(tmp_path):
     path = tmp_path / "contracts.json"
     path.write_text(json.dumps(_payload()), encoding="utf-8")
@@ -75,3 +119,5 @@ def test_matching_inputs_requires_exact_dataset_and_column(tmp_path):
     assert matches[0][1].column == "lactate_mmol_l"
     assert matches[0][2].kind == ChangeKind.DROP
     assert matching_inputs(contracts, DATASET.lower(), changed) == ()
+    differently_cased = (ChangedColumn("LACTATE_MMOL_L", ChangeKind.DROP),)
+    assert matching_inputs(contracts, DATASET, differently_cased) == ()
