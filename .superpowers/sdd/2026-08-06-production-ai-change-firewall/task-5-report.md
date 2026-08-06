@@ -73,3 +73,34 @@ Only Task 5 changes are staged. The pre-existing `FakeGateway.add_lineage` valid
 
 - Live DataHub aspect acceptance, lineage traversal, ownership projection, and MCP search remain unverified until DataHub GMS and MCP are reachable.
 - The local test suite emits the existing experimental DataHub SDK warning.
+
+## Review Round 1
+
+Reviewer finding: verifier and gateway tests proved only independent entity membership, not the exact connected clinical path.
+
+RED command:
+
+```text
+python -m pytest tests/test_verify_clinical_graph.py tests/test_gateway_contract.py -q
+```
+
+Result before the fix: `1 failed, 8 passed`. A gateway supplied all expected URNs, owner, environments, and search hits but reordered the feature/model nodes in the deployment path. The verifier incorrectly printed `VERIFY CLINICAL OK` and did not exit.
+
+Fix:
+
+- Added the pure `has_exact_clinical_deployment_path` predicate.
+- The predicate scans `LineageResult.paths` across all downstream results and accepts only the exact contiguous tuple `patient_labs -> sepsis_features -> lactate_trend -> sepsis_risk_v3 -> icu-early-warning`.
+- Updated the gateway contract test to assert that exact tuple on the fake deployment result.
+- Added a verifier test proving mere URN membership with a broken intermediate path exits 1 and reports `FAIL: exact clinical deployment path is missing`.
+
+GREEN commands:
+
+```text
+python -m pytest tests/test_verify_clinical_graph.py tests/test_gateway_contract.py -q
+python -m pytest tests/test_gateway_contract.py tests/test_decision.py tests/test_verify_clinical_graph.py -q
+python -m py_compile seed/verify_clinical_graph.py tests/test_verify_clinical_graph.py
+```
+
+Results: `9 passed`, then `16 passed`; compilation succeeded. Test runs retained only the existing experimental DataHub SDK warning.
+
+Live probes were repeated against `http://localhost:8080/health` and `http://127.0.0.1:8000/mcp`; both again returned curl code `000`. Live seeding and verification remain blocked and are not claimed.

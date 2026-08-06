@@ -50,8 +50,16 @@ def test_patient_labs_path_reaches_owned_prod_sepsis_model_and_deployment(gatewa
         for result in results
         if result.entity_type in {"mlmodel", "mlmodeldeployment"}
     }
+    deployment = next(result for result in results if result.urn == CLINICAL_DEPLOY_URN)
 
     assert clinical_entities == {CLINICAL_MODEL_URN, CLINICAL_DEPLOY_URN}
+    assert deployment.paths == ((
+        PATIENT_LABS.urn,
+        "urn:li:dataset:(urn:li:dataPlatform:snowflake,clinical.sepsis_features,PROD)",
+        "urn:li:mlFeature:(clinical,lactate_trend)",
+        CLINICAL_MODEL_URN,
+        CLINICAL_DEPLOY_URN,
+    ),)
     assert gateway.owners(CLINICAL_MODEL_URN) == ["clinical-ml-oncall"]
     assert gateway.environment(CLINICAL_MODEL_URN) == "PROD"
     assert gateway.environment(CLINICAL_DEPLOY_URN) == "PROD"
