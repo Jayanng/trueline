@@ -56,6 +56,11 @@ def main() -> None:
         (PATIENT_LABS_URN, "patient_labs", "Synthetic demo metadata for a patient laboratory table."),
         (SEPSIS_FEATURES_URN, "sepsis_features", "Synthetic demo metadata for sepsis model features."),
     ):
+        emitter.emit_mcp(_mcp("dataset", urn, "datasetKey", {
+            "platform": "urn:li:dataPlatform:snowflake",
+            "name": name,
+            "origin": "PROD",
+        }))
         emitter.emit_mcp(_mcp("dataset", urn, "datasetProperties", {
             "name": name,
             "description": description,

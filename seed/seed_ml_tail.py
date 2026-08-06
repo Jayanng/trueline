@@ -67,6 +67,11 @@ def main() -> None:
     emitter = DatahubRestEmitter(gms_server=GMS_URL, token=GMS_TOKEN)
 
     # 0) Feature dataset (training/feature input table for the ML tail)
+    emitter.emit_mcp(_mcp("dataset", FEATURE_DATASET, "datasetKey", {
+        "platform": "urn:li:dataPlatform:snowflake",
+        "name": "order_entry.feature_order_risk",
+        "origin": "PROD",
+    }))
     emitter.emit_mcp(_mcp("dataset", FEATURE_DATASET, "datasetProperties", {
         "description": (
             "Fraud risk feature table (demo ML tail). Built from order_items training/"

@@ -7,6 +7,8 @@ from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
 from urllib.parse import quote, urlparse
 
+from datahub.emitter.mcp import MetadataChangeProposalWrapper
+from datahub.metadata.schema_classes import DatasetKeyClass
 from datahub.metadata.urns import DatasetUrn, GlossaryTermUrn
 from datahub.sdk import DataHubClient
 
@@ -643,11 +645,31 @@ class DataHubGateway:
                 "refusing add_lineage with empty column_lineage — "
                 "would risk wiping prior fine-grained edges"
             )
+        self._ensure_dataset_key(upstream.urn)
+        self._ensure_dataset_key(downstream.urn)
         self._client.lineage.add_lineage(
             upstream=DatasetUrn.from_string(upstream.urn),
             downstream=DatasetUrn.from_string(downstream.urn),
             column_lineage=usable,
         )
+
+    def _ensure_dataset_key(self, urn: str) -> None:
+        """Self-heal datasets whose key aspect is missing (lineage-referenced
+        entities from snapshot restores). The SDK's add_lineage refuses such
+        URNs via its exists() check, which reads the key aspect."""
+        graph = getattr(self._client, "_graph", None)
+        if graph is None or graph.exists(urn):
+            return
+        inner = urn[len("urn:li:dataset:(") : -1] if urn.endswith(")") else urn
+        parts = inner.split(",")
+        if len(parts) != 3:
+            return
+        key = DatasetKeyClass(
+            platform=f"urn:li:dataPlatform:{parts[0].rsplit(':', 1)[-1]}",
+            name=parts[1],
+            origin=parts[2],
+        )
+        graph.emit_mcp(MetadataChangeProposalWrapper(entityUrn=urn, aspect=key))
 
     def add_term(self, ref: TableRef, column: str, term_urn: str) -> None:
         ent = self._client.entities.get(ref.urn)
