@@ -62,12 +62,19 @@ datahub lineage path --from "urn:li:dataset:(...)" --to "urn:li:mlModel:..." --f
 ## Step 4: Apply the ML-first severity model
 
 Use the rules in `references/severity-model.md`:
-- **CRITICAL** — any ML entity (`urn:li:mlModel:*`, `urn:li:mlFeature:*`, `urn:li:mlFeatureTable:*`, `urn:li:mlPrimaryKey:*`, `urn:li:mlModelGroup:*`, `urn:li:mlModelDeployment:*`) is downstream of a changed column.
+- **CRITICAL** — a non-additive change has an ML entity (`urn:li:mlModel:*`, `urn:li:mlFeature:*`, `urn:li:mlFeatureTable:*`, `urn:li:mlPrimaryKey:*`, `urn:li:mlModelGroup:*`, `urn:li:mlModelDeployment:*`) downstream.
 - **HIGH** — downstream dashboards/BI consumers (looker, tableau, powerbi, superset).
 - **MEDIUM** — multiple downstream consumers, or any non-additive change.
-- **LOW** — additive changes only.
+- **LOW** — additive-only changes, including changes with ML entities downstream.
 
 Owners come from the entities' ownership aspect — never invented. Name them in the verdict.
+
+Apply the contract decision independently of severity:
+
+- **ALLOW** — evidence is sufficient and no protected-input policy is violated. Additive-only changes remain `LOW` / `ALLOW`.
+- **BLOCK** — a contracted critical input has a non-additive change prohibited by its policy, and both the contracted model and deployment are verified in lineage.
+- **QUARANTINE** — an expected contracted model, deployment, or catalog lineage signal is missing. Name the missing evidence and the remedy; never treat empty lineage as safe.
+- **REVIEW** — a non-additive changed column has downstream lineage but no matching protected input. Preserve the severity computed from its generic blast radius.
 
 ## Step 5: Emit the machine-readable verdict
 
@@ -76,11 +83,13 @@ Output the verdict as `trueline-verdict.json` (schema in `templates/pr-verdict.t
 ```json
 {
   "verdict": "CRITICAL",
+  "decision": "BLOCK",
   "tables": [
     {
       "table": "ORDER_ITEMS",
       "urn": "urn:li:dataset:(...)",
       "severity": "CRITICAL",
+      "decision": "BLOCK",
       "affected": [
         {"urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)", "kind": "MLMODEL", "owner": "datahub", "env": "PROD"},
         {"urn": "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,fraud-scoring-endpoint,PROD)", "kind": "MLMODELDEPLOYMENT", "env": "PROD"}
@@ -126,3 +135,4 @@ the state journal (SQLite) so re-runs are `SKIPPED`.
 - The graph returns no lineage at all for a table the PR changes — say so; do not assume it is safe.
 - The PR SQL references a table that is not in the catalog — flag the gap, do not invent it.
 - Severity claims without a lineage path — every CRITICAL must cite the path.
+- Collapsing severity and decision into one value — report both, using contract evidence only for the decision.

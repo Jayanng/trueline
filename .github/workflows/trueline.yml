@@ -38,11 +38,20 @@ jobs:
             --author "${{ github.event.pull_request.user.login }}" `
             --json trueline-verdict.json --comment-out trueline-comment.md
           $code = $LASTEXITCODE
-          if ($code -gt 1) { exit $code }
+          "exit_code=$code" >> $env:GITHUB_OUTPUT
       - name: Post comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr comment ${{ github.event.pull_request.number }} --body-file trueline-comment.md
+      - name: Enforce guard decision
+        if: always()
+        shell: pwsh
+        run: |
+          $rawCode = "${{ steps.guard.outputs.exit_code }}"
+          $code = 0
+          if (-not [int]::TryParse($rawCode, [ref]$code)) { $code = 2 }
+          if ($code -notin @(0, 1)) { $code = 2 }
+          if ($code -ne 0) { exit $code }
 
   writeback:
     if: github.event_name == 'push'
