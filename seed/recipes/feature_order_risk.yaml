@@ -1,0 +1,10 @@
+source:
+  type: file
+  config:
+    path: seed/recipes/feature_order_risk.csv
+    parser: csv
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_GMS_TOKEN}

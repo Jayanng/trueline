@@ -1,0 +1,6 @@
+order_id,customer_id,customer_email,order_total,risk_score
+10001,51,alice@example.com,1299.00,0.4
+10002,52,bob@example.com,220.50,0.1
+10003,53,carol@example.com,87.90,0.1
+10004,54,dave@example.com,612.00,0.4
+10005,55,erin@example.com,340.00,0.1
