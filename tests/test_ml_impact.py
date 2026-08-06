@@ -8,9 +8,11 @@ DATASET = "urn:li:dataset:(urn:li:dataPlatform:snowflake,ORDER_ENTRY_DB.ORDER_EN
 
 
 def test_ml_kind_by_urn_prefix():
+    deploy = "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,fraud-scoring-endpoint,PROD)"
     assert ml_kind(MODEL) == "MLMODEL"
     assert ml_kind(FEATURE) == "MLFEATURE"
     assert ml_kind(GROUP) == "MLMODELGROUP"
+    assert ml_kind(deploy) == "MLMODELDEPLOYMENT"
     assert ml_kind(DATASET) is None
 
 
@@ -20,11 +22,11 @@ def test_find_ml_impacts_orders_by_hops_and_dedupes():
         LineageResult(urn=MODEL, entity_type="mlmodel", platform="mlflow", name="fraud_model_v4", hops=5),
         LineageResult(urn=DATASET, entity_type="dataset", platform="snowflake", name="ORDER_ITEMS", hops=1),
     ]
-    impacts = find_ml_impacts(results, {MODEL: ["riya"]}, {MODEL: "PROD"})
+    impacts = find_ml_impacts(results, {MODEL: ["datahub"]}, {MODEL: "PROD"})
     assert [i.urn for i in impacts] == [MODEL]
-    assert impacts[0].owner == "riya"
+    assert impacts[0].owner == "datahub"
     assert impacts[0].env == "PROD"
-    assert impacts[0].display() == "fraud_model_v4 [MLMODEL] [PROD] owner: @riya"
+    assert impacts[0].display() == "fraud_model_v4 [MLMODEL] [PROD] owner: @datahub"
 
 
 def test_no_ml_no_impacts():

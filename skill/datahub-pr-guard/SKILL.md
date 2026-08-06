@@ -82,7 +82,8 @@ Output the verdict as `trueline-verdict.json` (schema in `templates/pr-verdict.t
       "urn": "urn:li:dataset:(...)",
       "severity": "CRITICAL",
       "affected": [
-        {"urn": "urn:li:mlModel:fraud_model_v4", "kind": "MLMODEL", "owner": "riya", "env": "PROD"}
+        {"urn": "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)", "kind": "MLMODEL", "owner": "datahub", "env": "PROD"},
+        {"urn": "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,fraud-scoring-endpoint,PROD)", "kind": "MLMODELDEPLOYMENT", "env": "PROD"}
       ]
     }
   ],

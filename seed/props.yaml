@@ -1,6 +1,12 @@
+# Apply once: datahub properties upsert -f seed/props.yaml
+# Then run_local stamps entities via MCP add_structured_properties (best-effort).
 properties:
   - urn: urn:li:structuredProperty:trueline.reviewed
     name: trueline_reviewed
     displayName: Reviewed by Trueline
-    description: Set when Trueline gated this entity on a pull request.
+    description: >
+      Set when Trueline gated this entity on a pull request (Production ML Agents guard).
+      Value true means a PR agent walk ran against live DataHub lineage for this dataset.
     valueType: urn:li:dataType:boolean
+    entityTypes:
+      - dataset

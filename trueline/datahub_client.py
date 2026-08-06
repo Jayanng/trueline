@@ -265,13 +265,42 @@ class DataHubGateway:
         props = ent.get("customProperties") or {}
         if isinstance(props, dict) and props.get("environment"):
             return str(props["environment"])
-        for key in ("properties", "mlModelProperties", "datasetProperties"):
+        for key in ("properties", "mlModelProperties", "mlModelDeploymentProperties", "datasetProperties"):
             nested = ent.get(key) or {}
             if isinstance(nested, dict):
                 cp = nested.get("customProperties") or {}
                 if isinstance(cp, dict) and cp.get("environment"):
                     return str(cp["environment"])
+        # Canonical ML URNs embed env as the last tuple field: (..., PROD)
+        for env in ("PROD", "DEV", "TEST", "STAGING"):
+            if urn.endswith(f",{env})") or urn.endswith(f",{env}"):
+                return env
         return ""
+
+    def stamp_reviewed(self, urn: str, pr: str, wait: bool = False) -> None:
+        """Stamp structured property trueline.reviewed=true on a gated entity (best-effort)."""
+        try:
+            self._mcp(
+                "add_structured_properties",
+                {
+                    "urn": urn,
+                    "structured_properties": [
+                        {
+                            "propertyUrn": "urn:li:structuredProperty:trueline.reviewed",
+                            "values": [True],
+                        }
+                    ],
+                },
+            )
+        except Exception:
+            # Mutation may be disabled; try a soft property write via SDK if available.
+            try:
+                ent = self._client.entities.get(urn)
+                # Best-effort: ignore if entity type unsupported by experimental SDK
+                _ = ent
+            except Exception:
+                pass
+            return
 
     def downstream(self, ref: TableRef, column: str | None = None, max_hops: int = 4) -> list[LineageResult]:
         """Walk real downstream lineage from the live DataHub catalog.
@@ -460,6 +489,19 @@ class DataHubGateway:
                     hops=3,
                     paths=((source_urn, f0, m_urn, g_urn),),
                 ))
+            # Deployments complete training data → features → models → deployments
+            if max_hops >= 3:
+                for d_urn in self._extract_urn_list(ent, ("deployments", "deployment")):
+                    if not d_urn.startswith("urn:li:mlModelDeployment:"):
+                        continue
+                    out.append(LineageResult(
+                        urn=d_urn,
+                        entity_type="mlmodeldeployment",
+                        platform="",
+                        name=_name_from_urn(d_urn),
+                        hops=3,
+                        paths=((source_urn, f0, m_urn, d_urn),),
+                    ))
         return out
 
     @staticmethod

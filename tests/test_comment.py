@@ -15,7 +15,7 @@ def _verdict():
         severity="CRITICAL",
         affected=(
             AffectedEntity("urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)", "fraud_model_v4", "MLMODEL",
-                           "riya", "downstream ML entity"),
+                           "datahub", "downstream ML entity"),
         ),
         message="silent prod-model breakage — downstream ML entity",
     )
@@ -25,7 +25,7 @@ def test_comment_contains_verdict_and_owner():
     text = render_comment([_verdict()], [], dry_run=True, author="maya")
     assert "Trueline verdict — CRITICAL" in text
     assert "fraud_model_v4" in text
-    assert "owner: @riya" in text
+    assert "owner: @datahub" in text
     assert "dry-run" in text.lower()
 
 

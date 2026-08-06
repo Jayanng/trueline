@@ -108,6 +108,13 @@ async def run(args: argparse.Namespace) -> int:
     for v in verdicts:
         print(f"{v.ref.table}: {v.severity} — {v.message}")
 
+    # Best-effort stamp: every gated dataset was reviewed by Trueline on this PR.
+    for v in verdicts:
+        try:
+            gateway.stamp_reviewed(v.ref.urn, pr=str(args.pr))
+        except Exception:
+            pass
+
     if do_commit:
         run_id = f"{args.repo}:{args.pr}:{args.head}"
         results = await apply_proposals(proposals, gateway, state, run_id)

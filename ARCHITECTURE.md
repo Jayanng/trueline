@@ -4,10 +4,10 @@
 
 > **Hackathon:** Build with DataHub — The Agent Hackathon (deadline Aug 10, 2026, 5:00pm EDT)
 > **Primary track:** Production ML Agents — *"Build agents for ML teams that protect models in production. Use DataHub's end-to-end ML lineage — training data → features → models → deployments — accessed via the Agent Context Kit or MCP Server to catch silent problems that can break ML systems before they cost money."*
-> **Stack:** Python 3.10+ · Anthropic API · GitHub Actions · **DataHub Core (local quickstart)** — Docker only on the dev machine; the product itself is Docker-free · SQLite via aiosqlite (async) for local state
+> **Stack:** Python 3.10+ · GMI Cloud (DeepSeek V4 Flash, optional prose) · GitHub Actions · **DataHub Core (local quickstart)** — Docker only on the dev machine; the product itself is Docker-free · SQLite via aiosqlite (async) for local state · **MCP Server** for catalog reads
 > **Submission requirements (confirmed via registration email):** public repo under **Apache 2.0**, working demo, ≤3-min video, by **Aug 10, 2026, 5:00pm EDT**.
 > **Design:** `DESIGN.md` (UI spec — GMI Cloud aesthetic)
-> **Build plan:** *to be written* (new detailed plan replaces the old batch plan)
+> **Demo path:** `scripts/run_local.py` + `seed/seed_ml_tail.py` (feature → model → group → **deployment**)
 
 ---
 
@@ -28,7 +28,7 @@ Every PR Trueline reviews leaves DataHub **more complete and more true than it f
 
 ### How it maps to the official judging criteria (equally weighted)
 
-> **Stage One (pass/fail):** viability — must fit the theme and reasonably apply the required APIs/SDKs. Trueline passes: MCP Server + Agent Context Kit + Python SDK + a contributed DataHub Skill, all on the Production ML Agents theme.
+> **Stage One (pass/fail):** viability — must fit the theme and reasonably apply the required APIs/SDKs. Trueline passes: **MCP Server** + Python SDK + a contributed DataHub Skill, all on the Production ML Agents theme.
 > **Tie-breaking:** "the tied Submission with the highest score in the first applicable criterion" — **Use of DataHub is criterion #1 and breaks ties.** Over-invest there.
 
 | Criterion | How Trueline scores |

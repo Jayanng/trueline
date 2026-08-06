@@ -22,10 +22,18 @@ def _ml_results():
 
 
 def test_ml_downstream_is_critical():
-    v = compute_verdict(REF, _file(ChangedColumn("return_date", ChangeKind.DROP)), _ml_results(), {MODEL: ["riya"]}, {MODEL: "PROD"})
+    v = compute_verdict(
+        REF,
+        _file(ChangedColumn("return_date", ChangeKind.DROP)),
+        _ml_results(),
+        {MODEL: ["datahub"]},
+        {MODEL: "PROD"},
+    )
     assert v.severity == "CRITICAL"
-    assert v.affected[0].owner == "riya"
+    assert any(a.owner == "datahub" for a in v.affected)
     assert any(a.urn == MODEL for a in v.affected)
+    assert "return_date" in v.message
+    assert "fraud_model_v4" in v.message
 
 
 def test_dashboard_downstream_is_high():

@@ -29,6 +29,24 @@ class TableVerdict:
     message: str
 
 
+def _ml_message(file: ChangedFile, ml) -> str:
+    drops = [c.name for c in file.columns if c.kind == ChangeKind.DROP]
+    models = [i for i in ml if i.kind == "MLMODEL"]
+    deploys = [i for i in ml if i.kind == "MLMODELDEPLOYMENT"]
+    model_bit = models[0].name if models else (ml[0].name if ml else "ML entity")
+    env_bit = ""
+    if models and models[0].env:
+        env_bit = f" [{models[0].env}]"
+    elif deploys and deploys[0].env:
+        env_bit = f" [{deploys[0].env}]"
+    if drops:
+        return (
+            f"silent prod-model breakage — dropping {', '.join(drops)} "
+            f"reaches {model_bit}{env_bit} via ML lineage"
+        )
+    return f"silent prod-model breakage — change reaches {model_bit}{env_bit} via ML lineage"
+
+
 def compute_verdict(
     ref: TableRef,
     file: ChangedFile,
@@ -39,11 +57,26 @@ def compute_verdict(
     ml = find_ml_impacts(results, owners_by_urn, env_by_urn)
     if ml:
         affected = tuple(
-            AffectedEntity(i.urn, i.name, i.kind, i.owner, "downstream ML entity") for i in ml
+            AffectedEntity(
+                i.urn,
+                i.name,
+                i.kind,
+                i.owner,
+                (
+                    f"downstream ML path hops={len(i.path) or i.kind}"
+                    if i.path
+                    else "downstream ML entity"
+                ),
+            )
+            for i in ml
         )
         return TableVerdict(
-            ref, file.file_path, file.columns, "CRITICAL", affected,
-            "silent prod-model breakage — downstream ML entity",
+            ref,
+            file.file_path,
+            file.columns,
+            "CRITICAL",
+            affected,
+            _ml_message(file, ml),
         )
     dashboards = [r for r in results if r.platform.lower() in DASHBOARD_PLATFORMS]
     if dashboards:

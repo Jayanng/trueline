@@ -23,9 +23,16 @@ def test_downstream_column_filter(gateway: FakeGateway):
 
 def test_owners_and_environment(gateway: FakeGateway):
     model = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
-    assert gateway.owners(model) == ["riya"]
+    assert gateway.owners(model) == ["datahub"]
     assert gateway.environment(model) == "PROD"
-    assert gateway.environment("urn:li:dataset:(urn:li:dataPlatform:looker,foo,PROD)") == ""
+    # Env falls back from the trailing PROD segment on ML/dataset URNs
+    assert gateway.environment("urn:li:dataset:(urn:li:dataPlatform:looker,foo,PROD)") == "PROD"
+    assert gateway.environment("urn:li:mlFeature:(order_entry,feature_order_risk)") == ""
+
+
+def test_downstream_includes_deployment(gateway: FakeGateway):
+    results = gateway.downstream(UP, max_hops=4)
+    assert any(r.urn.endswith("fraud-scoring-endpoint,PROD)") for r in results)
 
 
 def test_column_terms(gateway: FakeGateway):

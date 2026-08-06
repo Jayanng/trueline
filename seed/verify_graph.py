@@ -15,10 +15,10 @@ from trueline.datahub_client import DataHubGateway
 load_dotenv()
 
 FEATURE = TableRef(platform="snowflake", db="order_entry", schema="", table="feature_order_risk")
-ORDER_ITEMS = TableRef(platform="snowflake", db="order_entry", schema="", table="order_items")
 FEATURE_URN = "urn:li:mlFeature:(order_entry,feature_order_risk)"
 MODEL_URN = "urn:li:mlModel:(urn:li:dataPlatform:mlflow,fraud_model_v4,PROD)"
 GROUP_URN = "urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,fraud-scoring,PROD)"
+DEPLOY_URN = "urn:li:mlModelDeployment:(urn:li:dataPlatform:mlflow,fraud-scoring-endpoint,PROD)"
 
 
 def main() -> None:
@@ -33,9 +33,10 @@ def main() -> None:
         print(f"  hops={r.hops} type={r.entity_type} urn={r.urn}")
 
     urns = {r.urn for r in results}
-    for expected in (FEATURE_URN, MODEL_URN, GROUP_URN):
+    for expected in (FEATURE_URN, MODEL_URN, GROUP_URN, DEPLOY_URN):
         if expected not in urns:
             failures.append(f"missing downstream ML entity: {expected}")
+
     model = next((r for r in results if r.urn == MODEL_URN), None)
     if model is None:
         failures.append("fraud_model_v4 not reachable from feature dataset")
@@ -45,23 +46,11 @@ def main() -> None:
         print(f"model owners={owners} env={env!r}")
         if "datahub" not in " ".join(owners).lower():
             failures.append(f"model owner missing (got {owners})")
-        if env and env != "PROD":
+        if env != "PROD":
             failures.append(f"model env not PROD (got {env!r})")
-        if not env:
-            print("WARN: model environment empty on get_entities (aspect may not be exposed by MCP)")
-
-    # Showcase pack customers (real URN shape from datapack)
-    cust = TableRef(
-        platform="snowflake",
-        db="b2fd91.order_entry_db",
-        schema="order_entry",
-        table="customers",
-    )
-    pii = gateway.column_terms(cust, "cust_email")
-    print(f"cust_email PII terms ({cust.urn}): {pii}")
 
     sample = gateway.search(query="*", entity_type="", limit=20)
-    print(f"search sample size: {len(sample)} (first={sample[:3]})")
+    print(f"search sample size: {len(sample)}")
     if len(sample) < 5:
         failures.append(f"suspiciously few search hits: {len(sample)}")
     feat_hits = gateway.search(query="feature_order_risk", entity_type="", limit=10)
@@ -72,7 +61,7 @@ def main() -> None:
         for f in failures:
             print(f"FAIL: {f}")
         sys.exit(1)
-    print("VERIFY OK — ML tail reachable, pack present, live catalog answers.")
+    print("VERIFY OK — full ML path (feature→model→group→deployment) reachable.")
 
     table_map = {
         "demo_repo/models/order_items.sql": {
